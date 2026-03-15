@@ -1,0 +1,19 @@
+{
+  "name": "ruguard",
+  "version": "1.0.0",
+  "description": "RugGuard AI Multi-Agent Security Pipeline — Hedera token rug-pull risk analysis",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "sentiment": "^5.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
