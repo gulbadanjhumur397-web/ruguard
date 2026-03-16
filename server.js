@@ -45,6 +45,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ── Serve Frontend ────────────────────────────────────────────────
+app.use(express.static(path.join(__dirname, "public")));
+
 // ── Helper: Validate Hedera Token ID ──────────────────────────────
 function isValidTokenId(tokenId) {
     return /^0\.0\.\d+$/.test(tokenId);
@@ -251,13 +254,14 @@ async function runPipeline(tokenId) {
 //  ROUTES
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Health Check ──────────────────────────────────────────────────
-app.get("/", (_req, res) => {
+// ── Health Check (API) ────────────────────────────────────────────
+app.get("/api/health", (_req, res) => {
     res.json({
         status: "RugGuard AI running",
         version: "1.0.0",
         endpoints: {
-            health: "GET /",
+            dashboard: "GET /",
+            health: "GET /api/health",
             analyze_get: "GET /analyze/:tokenId",
             analyze_post: "POST /analyze",
         },
@@ -330,7 +334,8 @@ app.listen(PORT, () => {
     console.log(`\n═══════════════════════════════════════════════════`);
     console.log(`  RugGuard AI Security Pipeline — LIVE`);
     console.log(`  Port: ${PORT}`);
-    console.log(`  Health: http://localhost:${PORT}/`);
-    console.log(`  Analyze: http://localhost:${PORT}/analyze/0.0.2283230`);
+    console.log(`  Dashboard: http://localhost:${PORT}/`);
+    console.log(`  Health:    http://localhost:${PORT}/api/health`);
+    console.log(`  Analyze:   http://localhost:${PORT}/analyze/0.0.2283230`);
     console.log(`═══════════════════════════════════════════════════\n`);
 });

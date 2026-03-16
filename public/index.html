@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RugGuard AI — Hedera Token Security Scanner</title>
+    <meta name="description" content="RugGuard AI multi-agent security pipeline. Analyze Hedera tokens for rug-pull risk with real-time blockchain intelligence.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* ═══ RESET & BASE ══════════════════════════════════════════ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a1f36;
+            --bg-card-hover: #1e2545;
+            --border-subtle: rgba(99, 102, 241, 0.15);
+            --border-glow: rgba(99, 102, 241, 0.4);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-indigo: #818cf8;
+            --accent-purple: #a78bfa;
+            --accent-cyan: #22d3ee;
+            --accent-green: #34d399;
+            --accent-yellow: #fbbf24;
+            --accent-orange: #fb923c;
+            --accent-red: #f87171;
+            --accent-pink: #f472b6;
+            --gradient-primary: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+            --gradient-dark: linear-gradient(180deg, #0a0e1a 0%, #111827 100%);
+            --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.15);
+            --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.3);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --radius-xs: 6px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ═══ BACKGROUND EFFECTS ════════════════════════════════════ */
+        .bg-grid {
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow-1 {
+            position: fixed;
+            top: -200px;
+            right: -200px;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.08), transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-glow-2 {
+            position: fixed;
+            bottom: -300px;
+            left: -200px;
+            width: 700px;
+            height: 700px;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.06), transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ═══ LAYOUT ════════════════════════════════════════════════ */
+        .app {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px 20px 60px;
+        }
+
+        /* ═══ HEADER ════════════════════════════════════════════════ */
+        .header {
+            text-align: center;
+            padding: 48px 0 40px;
+        }
+
+        .header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent-indigo);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+
+        .header-badge .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+        }
+
+        .header h1 {
+            font-size: clamp(36px, 5vw, 56px);
+            font-weight: 900;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -1.5px;
+            line-height: 1.1;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+            font-size: 16px;
+            margin-top: 12px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+
+        /* ═══ SEARCH ════════════════════════════════════════════════ */
+        .search-section {
+            max-width: 600px;
+            margin: 0 auto 40px;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 0;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 14px;
+            overflow: hidden;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .search-box:focus-within {
+            border-color: var(--border-glow);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .search-box input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            padding: 18px 20px;
+            letter-spacing: 0.3px;
+        }
+
+        .search-box input::placeholder {
+            color: var(--text-muted);
+            font-family: 'Inter', sans-serif;
+        }
+
+        .search-box button {
+            background: var(--gradient-primary);
+            color: white;
+            border: none;
+            padding: 18px 32px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 0.3px;
+            transition: opacity 0.2s, transform 0.1s;
+            white-space: nowrap;
+        }
+
+        .search-box button:hover { opacity: 0.9; }
+        .search-box button:active { transform: scale(0.98); }
+        .search-box button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .search-hint {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .search-hint code {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+            background: rgba(99, 102, 241, 0.08);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        /* ═══ LOADING ═══════════════════════════════════════════════ */
+        .loading-overlay {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .loading-overlay.active { display: block; }
+
+        .scanner-anim {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 24px;
+            border: 3px solid rgba(99, 102, 241, 0.15);
+            border-top-color: var(--accent-indigo);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-overlay h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .loading-overlay p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .pipeline-steps {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 24px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .pipeline-step {
+            padding: 6px 12px;
+            background: rgba(99, 102, 241, 0.06);
+            border: 1px solid rgba(99, 102, 241, 0.1);
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            transition: all 0.3s;
+        }
+
+        .pipeline-step.active {
+            color: var(--accent-cyan);
+            border-color: rgba(34, 211, 238, 0.3);
+            background: rgba(34, 211, 238, 0.08);
+        }
+
+        .pipeline-step.done {
+            color: var(--accent-green);
+            border-color: rgba(52, 211, 153, 0.3);
+            background: rgba(52, 211, 153, 0.08);
+        }
+
+        /* ═══ ERROR ═════════════════════════════════════════════════ */
+        .error-box {
+            display: none;
+            max-width: 600px;
+            margin: 0 auto 30px;
+            padding: 18px 24px;
+            background: rgba(248, 113, 113, 0.06);
+            border: 1px solid rgba(248, 113, 113, 0.2);
+            border-radius: var(--radius-sm);
+            color: var(--accent-red);
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .error-box.active { display: block; }
+
+        /* ═══ RESULTS ═══════════════════════════════════════════════ */
+        .results {
+            display: none;
+            animation: fade-in 0.5s ease;
+        }
+
+        .results.active { display: block; }
+
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Top Bar ─────────────────────────────────────────────── */
+        .result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 28px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .token-identity h2 {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .token-identity .token-id {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .pipeline-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .pipeline-badge.live {
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid rgba(52, 211, 153, 0.25);
+            color: var(--accent-green);
+        }
+
+        /* ── Score Card (Hero) ───────────────────────────────────── */
+        .score-hero {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .score-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 28px 24px;
+            text-align: center;
+            transition: border-color 0.3s, transform 0.2s;
+        }
+
+        .score-card:hover {
+            border-color: var(--border-glow);
+            transform: translateY(-2px);
+        }
+
+        .score-card .score-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.8px;
+            margin-bottom: 12px;
+        }
+
+        .score-card .score-value {
+            font-size: 44px;
+            font-weight: 900;
+            letter-spacing: -2px;
+            line-height: 1;
+        }
+
+        .score-card .score-sub {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+            font-weight: 500;
+        }
+
+        /* ── Risk Gauge ──────────────────────────────────────────── */
+        .gauge-container {
+            position: relative;
+            width: 120px;
+            height: 60px;
+            margin: 0 auto 8px;
+            overflow: hidden;
+        }
+
+        .gauge-bg, .gauge-fill {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 10px solid transparent;
+        }
+
+        .gauge-bg {
+            border-top-color: rgba(99, 102, 241, 0.1);
+            border-left-color: rgba(99, 102, 241, 0.1);
+            border-right-color: rgba(99, 102, 241, 0.1);
+            transform: rotate(0deg);
+        }
+
+        .gauge-fill {
+            border-top-color: var(--accent-indigo);
+            border-left-color: var(--accent-indigo);
+            border-right-color: transparent;
+            transform: rotate(0deg);
+            transition: transform 1s ease;
+        }
+
+        /* ── Detail Grid ─────────────────────────────────────────── */
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .detail-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 24px;
+            transition: border-color 0.3s;
+        }
+
+        .detail-card:hover { border-color: var(--border-glow); }
+
+        .detail-card h3 {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.6px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .detail-card h3 .icon {
+            font-size: 16px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.05);
+        }
+
+        .detail-row:last-child { border-bottom: none; }
+
+        .detail-row .label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .detail-row .value {
+            font-size: 13px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── Badges ──────────────────────────────────────────────── */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-critical { background: rgba(248, 113, 113, 0.15); color: var(--accent-red); border: 1px solid rgba(248, 113, 113, 0.25); }
+        .badge-high { background: rgba(251, 146, 60, 0.15); color: var(--accent-orange); border: 1px solid rgba(251, 146, 60, 0.25); }
+        .badge-medium { background: rgba(251, 191, 36, 0.15); color: var(--accent-yellow); border: 1px solid rgba(251, 191, 36, 0.25); }
+        .badge-low { background: rgba(52, 211, 153, 0.15); color: var(--accent-green); border: 1px solid rgba(52, 211, 153, 0.25); }
+        .badge-guarded { background: rgba(34, 211, 238, 0.15); color: var(--accent-cyan); border: 1px solid rgba(34, 211, 238, 0.25); }
+
+        /* ── Warning Banner ──────────────────────────────────────── */
+        .warning-banner {
+            padding: 20px 24px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 24px;
+            font-size: 14px;
+            line-height: 1.6;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .warning-banner .warning-icon { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+        .warning-banner .warning-text { flex: 1; }
+        .warning-banner .warning-title { font-weight: 700; margin-bottom: 4px; }
+
+        .warning-critical { background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.2); color: var(--accent-red); }
+        .warning-high { background: rgba(251, 146, 60, 0.08); border: 1px solid rgba(251, 146, 60, 0.2); color: var(--accent-orange); }
+        .warning-medium { background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.2); color: var(--accent-yellow); }
+        .warning-low { background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.2); color: var(--accent-green); }
+
+        /* ── Recommendations ─────────────────────────────────────── */
+        .recs-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .recs-card h3 {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.6px;
+            margin-bottom: 16px;
+        }
+
+        .rec-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.05);
+        }
+
+        .rec-item:last-child { border-bottom: none; }
+
+        .rec-num {
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent-indigo);
+        }
+
+        .rec-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* ── Tags ────────────────────────────────────────────────── */
+        .tags-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .tag {
+            padding: 6px 14px;
+            background: rgba(99, 102, 241, 0.06);
+            border: 1px solid rgba(99, 102, 241, 0.12);
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-purple);
+            letter-spacing: 0.3px;
+        }
+
+        /* ── Pipeline Log ────────────────────────────────────────── */
+        .pipeline-log {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 24px;
+        }
+
+        .pipeline-log h3 {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.6px;
+            margin-bottom: 16px;
+        }
+
+        .log-entry {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.05);
+        }
+
+        .log-entry:last-child { border-bottom: none; }
+
+        .log-entry .log-name {
+            font-size: 13px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .log-entry .log-status {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .log-entry .log-time {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .exec-time {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .exec-time span {
+            color: var(--accent-cyan);
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+        }
+
+        /* ═══ FOOTER ════════════════════════════════════════════════ */
+        .footer {
+            text-align: center;
+            padding: 40px 0 20px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .footer a {
+            color: var(--accent-indigo);
+            text-decoration: none;
+        }
+
+        /* ═══ RESPONSIVE ════════════════════════════════════════════ */
+        @media (max-width: 768px) {
+            .score-hero { grid-template-columns: 1fr; }
+            .detail-grid { grid-template-columns: 1fr; }
+            .result-header { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="bg-glow-1"></div>
+    <div class="bg-glow-2"></div>
+
+    <div class="app">
+        <!-- ── Header ──────────────────────────────────────────── -->
+        <header class="header">
+            <div class="header-badge">
+                <span class="dot"></span>
+                Multi-Agent Security Pipeline
+            </div>
+            <h1>RugGuard AI</h1>
+            <p>Real-time Hedera token security analysis powered by a 6-agent AI pipeline</p>
+        </header>
+
+        <!-- ── Search ──────────────────────────────────────────── -->
+        <section class="search-section">
+            <div class="search-box">
+                <input
+                    type="text"
+                    id="tokenInput"
+                    placeholder="Enter Hedera Token ID..."
+                    value="0.0.2283230"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+                <button id="analyzeBtn" onclick="analyzeToken()">Analyze</button>
+            </div>
+            <p class="search-hint">Try: <code>0.0.2283230</code> · <code>0.0.786931</code> · <code>0.0.1159074</code></p>
+        </section>
+
+        <!-- ── Error ───────────────────────────────────────────── -->
+        <div class="error-box" id="errorBox"></div>
+
+        <!-- ── Loading ─────────────────────────────────────────── -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="scanner-anim"></div>
+            <h3>Running Security Pipeline...</h3>
+            <p>Analyzing token across 6 AI agents</p>
+            <div class="pipeline-steps" id="pipelineSteps">
+                <div class="pipeline-step" data-step="scanner">Token Scanner</div>
+                <div class="pipeline-step" data-step="blockchain">Blockchain Risk</div>
+                <div class="pipeline-step" data-step="sentiment">Sentiment</div>
+                <div class="pipeline-step" data-step="scoring">Risk Scoring</div>
+                <div class="pipeline-step" data-step="predictor">AI Predictor</div>
+                <div class="pipeline-step" data-step="alert">Alert Agent</div>
+            </div>
+        </div>
+
+        <!-- ── Results ─────────────────────────────────────────── -->
+        <div class="results" id="results">
+            <!-- Filled by JS -->
+        </div>
+
+        <!-- ── Footer ──────────────────────────────────────────── -->
+        <footer class="footer">
+            RugGuard AI &middot; Multi-Agent Security Pipeline &middot;
+            <a href="https://github.com/Tutulii/ruguard" target="_blank">GitHub</a>
+        </footer>
+    </div>
+
+    <script>
+        // ═══ CONFIG ════════════════════════════════════════════════
+        const API_BASE = window.location.origin;
+
+        // ═══ HELPERS ═══════════════════════════════════════════════
+        function getAlertClass(level) {
+            const l = (level || '').toUpperCase();
+            if (l === 'CRITICAL') return 'critical';
+            if (l === 'HIGH') return 'high';
+            if (l === 'MEDIUM') return 'medium';
+            return 'low';
+        }
+
+        function getScoreColor(score) {
+            if (score >= 75) return 'var(--accent-red)';
+            if (score >= 50) return 'var(--accent-orange)';
+            if (score >= 30) return 'var(--accent-yellow)';
+            return 'var(--accent-green)';
+        }
+
+        function getPostureIcon(posture) {
+            const p = (posture || '').toUpperCase();
+            if (p === 'HIGH_RISK') return '🔴';
+            if (p === 'AT_RISK') return '🟠';
+            if (p === 'CAUTION') return '🟡';
+            return '🟢';
+        }
+
+        function getWarningIcon(level) {
+            const l = (level || '').toUpperCase();
+            if (l === 'CRITICAL') return '🚨';
+            if (l === 'HIGH') return '⚠️';
+            if (l === 'MEDIUM') return '⚡';
+            return '✅';
+        }
+
+        // ═══ PIPELINE STEP ANIMATION ══════════════════════════════
+        const stepOrder = ['scanner', 'blockchain', 'sentiment', 'scoring', 'predictor', 'alert'];
+        let stepInterval = null;
+
+        function startStepAnimation() {
+            let idx = 0;
+            const steps = document.querySelectorAll('.pipeline-step');
+            steps.forEach(s => { s.className = 'pipeline-step'; });
+
+            stepInterval = setInterval(() => {
+                if (idx > 0) steps[idx - 1].classList.replace('active', 'done');
+                if (idx < steps.length) {
+                    steps[idx].classList.add('active');
+                    idx++;
+                } else {
+                    clearInterval(stepInterval);
+                }
+            }, 600);
+        }
+
+        function stopStepAnimation() {
+            if (stepInterval) clearInterval(stepInterval);
+            document.querySelectorAll('.pipeline-step').forEach(s => {
+                s.classList.remove('active');
+                s.classList.add('done');
+            });
+        }
+
+        // ═══ MAIN ANALYZE FUNCTION ════════════════════════════════
+        async function analyzeToken() {
+            const input = document.getElementById('tokenInput');
+            const tokenId = input.value.trim();
+            const btn = document.getElementById('analyzeBtn');
+            const loading = document.getElementById('loadingOverlay');
+            const results = document.getElementById('results');
+            const errorBox = document.getElementById('errorBox');
+
+            // Validation
+            if (!/^0\.0\.\d+$/.test(tokenId)) {
+                errorBox.textContent = 'Invalid token ID format. Use: 0.0.XXXXXXX';
+                errorBox.classList.add('active');
+                return;
+            }
+
+            // UI: loading state
+            errorBox.classList.remove('active');
+            results.classList.remove('active');
+            loading.classList.add('active');
+            btn.disabled = true;
+            btn.textContent = 'Scanning...';
+            startStepAnimation();
+
+            try {
+                const res = await fetch(`${API_BASE}/analyze/${tokenId}`);
+                const data = await res.json();
+
+                stopStepAnimation();
+                loading.classList.remove('active');
+                btn.disabled = false;
+                btn.textContent = 'Analyze';
+
+                if (data.error) {
+                    errorBox.textContent = `Analysis failed: ${data.details || data.error}`;
+                    errorBox.classList.add('active');
+                    return;
+                }
+
+                renderResults(data);
+            } catch (err) {
+                stopStepAnimation();
+                loading.classList.remove('active');
+                btn.disabled = false;
+                btn.textContent = 'Analyze';
+                errorBox.textContent = `Connection failed: ${err.message}`;
+                errorBox.classList.add('active');
+            }
+        }
+
+        // ═══ RENDER RESULTS ════════════════════════════════════════
+        function renderResults(d) {
+            const r = document.getElementById('results');
+            const alertCls = getAlertClass(d.alert_level);
+            const scoreColor = getScoreColor(d.rug_risk_score);
+            const probPercent = Math.round((d.predicted_probability || 0) * 100);
+
+            r.innerHTML = `
+                <!-- Header -->
+                <div class="result-header">
+                    <div class="token-identity">
+                        <h2>${d.token_name || 'Unknown Token'}</h2>
+                        <div class="token-id">${d.token_id}</div>
+                    </div>
+                    <div class="pipeline-badge live">
+                        <span class="dot" style="width:6px;height:6px;background:var(--accent-green);border-radius:50%;display:inline-block;"></span>
+                        ${d.pipeline_status || 'LIVE'}
+                    </div>
+                </div>
+
+                <!-- Warning Banner -->
+                <div class="warning-banner warning-${alertCls}">
+                    <span class="warning-icon">${getWarningIcon(d.alert_level)}</span>
+                    <div class="warning-text">
+                        <div class="warning-title">${d.alert_level} Alert</div>
+                        ${d.primary_warning}
+                    </div>
+                </div>
+
+                <!-- Score Hero Cards -->
+                <div class="score-hero">
+                    <div class="score-card">
+                        <div class="score-label">Rug Risk Score</div>
+                        <div class="score-value" style="color:${scoreColor}">${d.rug_risk_score}</div>
+                        <div class="score-sub">${d.risk_level}</div>
+                    </div>
+                    <div class="score-card">
+                        <div class="score-label">Rug Probability</div>
+                        <div class="score-value" style="color:${getScoreColor(probPercent)}">${probPercent}%</div>
+                        <div class="score-sub">${d.probability_level}</div>
+                    </div>
+                    <div class="score-card">
+                        <div class="score-label">AI Confidence</div>
+                        <div class="score-value" style="color:var(--accent-cyan)">${d.confidence}</div>
+                        <div class="score-sub">out of 100</div>
+                    </div>
+                </div>
+
+                <!-- Detail Grid -->
+                <div class="detail-grid">
+                    <div class="detail-card">
+                        <h3><span class="icon">🛡️</span> Security Overview</h3>
+                        <div class="detail-row">
+                            <span class="label">Alert Level</span>
+                            <span class="badge badge-${alertCls}">${d.alert_level}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Security Posture</span>
+                            <span class="value">${getPostureIcon(d.security_posture)} ${d.security_posture}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Monitoring</span>
+                            <span class="value">${d.monitoring_status}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Alert Triggered</span>
+                            <span class="value" style="color:${d.alert_triggered ? 'var(--accent-red)' : 'var(--accent-green)'}">${d.alert_triggered ? 'YES' : 'NO'}</span>
+                        </div>
+                    </div>
+                    <div class="detail-card">
+                        <h3><span class="icon">📊</span> Risk Intelligence</h3>
+                        <div class="detail-row">
+                            <span class="label">Primary Risk</span>
+                            <span class="value">${d.primary_risk}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Risk Trend</span>
+                            <span class="value">${d.risk_trend === 'DETERIORATING' ? '📉' : d.risk_trend === 'IMPROVING' ? '📈' : '➡️'} ${d.risk_trend}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Time Horizon</span>
+                            <span class="value">${d.time_horizon}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Probability Level</span>
+                            <span class="badge badge-${getAlertClass(d.probability_level === 'GUARDED' ? 'MEDIUM' : d.probability_level)}">${d.probability_level}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Key Triggers & Tags -->
+                ${(d.key_triggers && d.key_triggers.length > 0) ? `
+                <div class="recs-card">
+                    <h3>⚡ Key Risk Triggers</h3>
+                    ${d.key_triggers.map((t, i) => `
+                        <div class="rec-item">
+                            <div class="rec-num">${i + 1}</div>
+                            <div class="rec-text">${t}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+
+                ${(d.risk_tags && d.risk_tags.length > 0) ? `
+                <div class="tags-row">
+                    ${d.risk_tags.map(t => `<span class="tag">${t}</span>`).join('')}
+                </div>
+                ` : ''}
+
+                <!-- Recommendations -->
+                <div class="recs-card">
+                    <h3>📋 Security Recommendations</h3>
+                    ${(d.recommendations || []).map((rec, i) => `
+                        <div class="rec-item">
+                            <div class="rec-num">${i + 1}</div>
+                            <div class="rec-text">${rec}</div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <!-- Pipeline Log -->
+                <div class="pipeline-log">
+                    <h3>⚙️ Pipeline Execution Log</h3>
+                    ${(d.pipeline_log || []).map(log => `
+                        <div class="log-entry">
+                            <span class="log-name">
+                                <span style="color:var(--accent-green)">✓</span>
+                                ${log.step}
+                            </span>
+                            <span class="log-status" style="color:var(--accent-green)">${log.status}</span>
+                            <span class="log-time">${log.elapsed_ms}ms</span>
+                        </div>
+                    `).join('')}
+                    <div class="exec-time">Total execution time: <span>${d.execution_time_ms}ms</span></div>
+                </div>
+            `;
+
+            r.classList.add('active');
+             // Scroll to results
+            r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // ═══ ENTER KEY ════════════════════════════════════════════
+        document.getElementById('tokenInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') analyzeToken();
+        });
+    </script>
+</body>
+</html>
