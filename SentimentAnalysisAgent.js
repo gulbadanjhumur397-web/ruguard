@@ -269,12 +269,13 @@ class SentimentAnalysisAgent {
       const tokenAttrs = tokenResData?.data?.attributes;
       if (!tokenAttrs) return { dex_listed: false, dex_risk_level: "HIGH" };
 
-      const liquidity_usd = parseFloat(tokenAttrs.total_reserve_in_usd || "0");
+      let liquidity_usd = parseFloat(tokenAttrs.total_reserve_in_usd || "0") * 2; // Fallback estimate
       const market_cap_usd = parseFloat(tokenAttrs.market_cap_usd || "0");
 
-      // Step 2: Fetch pool-level data for accurate volume & transactions
+      // Step 2: Fetch pool-level data for accurate liquidity, volume & transactions
       let volume_24h = 0;
       let transactions_24h = 0;
+      let total_pool_liquidity = 0;
 
       try {
           const poolsResponse = await this._fetchWithTimeout(`https://api.geckoterminal.com/api/v2/networks/hedera-hashgraph/tokens/${evmAddress}/pools?page=1`);
@@ -282,11 +283,16 @@ class SentimentAnalysisAgent {
               const poolsData = await poolsResponse.json();
               for (const pool of (poolsData?.data || [])) {
                   const pa = pool.attributes;
+                  total_pool_liquidity += parseFloat(pa?.reserve_in_usd || "0");
                   volume_24h += parseFloat(pa?.volume_usd?.h24 || "0");
                   const txns = pa?.transactions?.h24;
                   if (txns) {
                       transactions_24h += (txns.buys || 0) + (txns.sells || 0);
                   }
+              }
+              
+              if (total_pool_liquidity > 0) {
+                  liquidity_usd = total_pool_liquidity;
               }
           }
       } catch (poolErr) {
