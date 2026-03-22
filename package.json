@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "build": "tsc"
   },
   "dependencies": {
     "@elizaos/adapter-sqlite": "^0.25.6-alpha.1",
@@ -25,10 +26,12 @@
     "openai": "^6.29.0",
     "sentiment": "^5.0.2",
     "sharp": "^0.34.5",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "ts-node": "^10.9.2"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
   }
 }
