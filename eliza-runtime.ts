@@ -18,7 +18,7 @@ import { predictRugPullAction } from "./ElizaActions/PredictAction";
 import { OpenConvAIClient } from "./openconvai-client";
 
 // Load character file
-const characterPath = path.resolve(__dirname, "../ruguard.character.json");
+const characterPath = path.resolve(process.cwd(), "ruguard.character.json");
 const characterJson = JSON.parse(fs.readFileSync(characterPath, "utf-8"));
 
 export class RugGuardElizaRuntime {
@@ -27,7 +27,7 @@ export class RugGuardElizaRuntime {
     // Ultra-lightweight conversational memory map: chatId -> previous messages
     private chatMemory = new Map<string, Array<{role: string, content: string}>>();
     // Persistent memory file path
-    private memoryFilePath = path.resolve(__dirname, '..', 'memory.json');
+    private memoryFilePath = path.resolve(process.cwd(), 'memory.json');
     // Current market mood from Fear & Greed Index
     private marketMood: { value: number, label: string, lastUpdated: string } = { value: 50, label: "Neutral", lastUpdated: "never" };
     // Current active plan
@@ -267,9 +267,9 @@ Example output:
                 }
 
                 // Scan each token with the REAL pipeline
-                const TokenScanner = require(path.resolve(__dirname, '..', "./TokenScannerAgent"));
-                const BlockchainRiskAgent = require(path.resolve(__dirname, '..', "./BlockchainRiskAnalysisAgent"));
-                const RiskScoringAgent = require(path.resolve(__dirname, '..', "./RiskScoringAgent"));
+                const TokenScanner = require(path.resolve(process.cwd(), "./TokenScannerAgent"));
+                const BlockchainRiskAgent = require(path.resolve(process.cwd(), "./BlockchainRiskAnalysisAgent"));
+                const RiskScoringAgent = require(path.resolve(process.cwd(), "./RiskScoringAgent"));
                 
                 for (const tokenId of tokensToScan) {
                     try {
@@ -746,12 +746,12 @@ WIRING AND ANTI-LOOP RULES:
     private async runFullPipeline(sessionId: string, tokenId: string, history: Array<{role: string, content: string}>): Promise<string> {
         try {
             this.runtime.logger.info(`[Pipeline] Full scan for ${tokenId}...`);
-            const TokenScanner = require(path.resolve(__dirname, '..', "./TokenScannerAgent"));
-            const SentimentAgent = require(path.resolve(__dirname, '..', "./SentimentAnalysisAgent"));
-            const BlockchainRiskAgent = require(path.resolve(__dirname, '..', "./BlockchainRiskAnalysisAgent"));
-            const RiskScoring = require(path.resolve(__dirname, '..', "./RiskScoringAgent"));
-            const RugPredictor = require(path.resolve(__dirname, '..', "./RugPredictorAgent"));
-            const AlertEngine = require(path.resolve(__dirname, '..', "./AlertAgent"));
+            const TokenScanner = require(path.resolve(process.cwd(), "./TokenScannerAgent"));
+            const SentimentAgent = require(path.resolve(process.cwd(), "./SentimentAnalysisAgent"));
+            const BlockchainRiskAgent = require(path.resolve(process.cwd(), "./BlockchainRiskAnalysisAgent"));
+            const RiskScoring = require(path.resolve(process.cwd(), "./RiskScoringAgent"));
+            const RugPredictor = require(path.resolve(process.cwd(), "./RugPredictorAgent"));
+            const AlertEngine = require(path.resolve(process.cwd(), "./AlertAgent"));
 
             const scanner = new TokenScanner();
             const scannerData = await scanner.scan(tokenId);
@@ -822,8 +822,8 @@ WIRING AND ANTI-LOOP RULES:
             }
 
             // Fresh scan
-            const TokenScanner = require(path.resolve(__dirname, '..', "./TokenScannerAgent"));
-            const SentimentAgent = require(path.resolve(__dirname, '..', "./SentimentAnalysisAgent"));
+            const TokenScanner = require(path.resolve(process.cwd(), "./TokenScannerAgent"));
+            const SentimentAgent = require(path.resolve(process.cwd(), "./SentimentAnalysisAgent"));
 
             const scanner = new TokenScanner();
             const scannerData = await scanner.scan(tokenId);
@@ -866,8 +866,8 @@ WIRING AND ANTI-LOOP RULES:
                 scannerData = cached.scannerData;
                 sentimentData = cached.sentimentData;
             } else {
-                const TokenScanner = require(path.resolve(__dirname, '..', "./TokenScannerAgent"));
-                const SentimentAgent = require(path.resolve(__dirname, '..', "./SentimentAnalysisAgent"));
+                const TokenScanner = require(path.resolve(process.cwd(), "./TokenScannerAgent"));
+                const SentimentAgent = require(path.resolve(process.cwd(), "./SentimentAnalysisAgent"));
                 const scanner = new TokenScanner();
                 scannerData = await scanner.scan(tokenId);
                 const sentAgent = new SentimentAgent();

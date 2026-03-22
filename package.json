@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "build": "npx esbuild eliza-runtime.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/eliza-runtime.mjs --banner:js=\"import{fileURLToPath as __file_url}from'url';import{dirname as __dir_name}from'path';import{createRequire as __cr}from'module';const __filename=__file_url(import.meta.url);const __dirname=__dir_name(__filename);const require=__cr(import.meta.url);\""
+    "build": "npx esbuild eliza-runtime.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/eliza-runtime.mjs --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\""
   },
   "dependencies": {
     "@elizaos/adapter-sqlite": "^0.25.6-alpha.1",
