@@ -43,7 +43,7 @@ export class OpenConvAIClient {
                 86400
             );
             
-            this.inboundTopicId = typeof response === "string" ? response : (response.topicId || response);
+            this.inboundTopicId = typeof response === "string" ? response : (response.topicId?.toString() || response.toString());
             
             this.runtime.logger.info(`====================================================`);
             this.runtime.logger.info(`✅ OPENCONVAI AGENT SUCCESSFULLY REGISTERED!`);
@@ -55,7 +55,7 @@ export class OpenConvAIClient {
                 InboundTopicType.PUBLIC,
                 86400
             );
-            this.globalSirenTopicId = typeof sirenResp === "string" ? sirenResp : (sirenResp.topicId || sirenResp);
+            this.globalSirenTopicId = typeof sirenResp === "string" ? sirenResp : (sirenResp.topicId?.toString() || sirenResp.toString());
             this.runtime.logger.info(`🚨 GLOBAL SECURITY SIREN HCS TOPIC is: ${this.globalSirenTopicId}`);
             
             this.runtime.logger.info(`💰 Micro-Monetization ACTIVE: Other agents must pay ≥${this.ANALYSIS_FEE_HBAR} HBAR for analysis.`);
