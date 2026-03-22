@@ -553,22 +553,22 @@ class SentimentAnalysisAgent {
     const whitepaper = externalData.coingecko.whitepaper_link || "None";
 
     const aiPrompt = `
-Analyze this token market sentiment:
+Analyze this token market sentiment based on the following metrics:
 
 Token: ${tokenName}
 Project Utility: ${projectDesc.substring(0, 150)}...
 Market Cap: $${marketCap}
 Liquidity USD: $${liquidity}
 NVT Ratio: ${nvtRatio}
-Bullish sentiment: ${bullishPercent}%
-Bearish sentiment: ${bearishPercent}%
+CoinGecko Community Votes (Bullish): ${bullishPercent}%
+CoinGecko Community Votes (Bearish): ${bearishPercent}%
 DEX risk level: ${dexRisk}
 Community risk index: ${communityRisk}
 
 Explain:
-1 overall sentiment condition
-2 fundamental market strength (using Cap, Liquidity, and NVT)
-3 possible rug concerns
+1. Overall sentiment condition (explicitly credit CoinGecko if using their votes. If votes are 0%, state lack of community data).
+2. Fundamental market strength (using Cap, Liquidity, and NVT).
+3. Possible rug concerns.
 
 Max 3 short sentences.
 `;
