@@ -1,5 +1,6 @@
 const Sentiment = require("sentiment");
 const sentiment = new Sentiment();
+const askLLM = require("./llmClient");
 
 class SentimentAnalysisAgent {
   constructor() {
@@ -189,7 +190,7 @@ class SentimentAnalysisAgent {
           id = searchData.coins[0].id;
       }
 
-      const response = await this._fetchWithTimeout(`https://api.coingecko.com/api/v3/coins/${id}?localization=false&tickers=false&market_data=false&developer_data=true`);
+      const response = await this._fetchWithTimeout(`https://api.coingecko.com/api/v3/coins/${id}?localization=false&tickers=false&market_data=true&developer_data=true`);
       
       if (!response.ok) {
          return { coingecko_data_available: false };
@@ -205,7 +206,24 @@ class SentimentAnalysisAgent {
           public_interest_score: data.public_interest_score || 0,
           bullish_percentage: data.sentiment_votes_up_percentage || 0,
           bearish_percentage: data.sentiment_votes_down_percentage || 0,
-          github_repos_url: data.links?.repos_url?.github?.[0] || null
+          github_repos_url: data.links?.repos_url?.github?.[0] || null,
+          // Token fundamentals
+          current_price: data.market_data?.current_price?.usd || 0,
+          market_cap: data.market_data?.market_cap?.usd || 0,
+          fully_diluted_valuation: data.market_data?.fully_diluted_valuation?.usd || 0,
+          circulating_supply: data.market_data?.circulating_supply || 0,
+          total_supply: data.market_data?.total_supply || 0,
+          max_supply: data.market_data?.max_supply || 0,
+          price_change_24h: data.market_data?.price_change_percentage_24h || 0,
+          ath: data.market_data?.ath?.usd || 0,
+          atl: data.market_data?.atl?.usd || 0,
+          tvl: data.market_data?.total_value_locked?.usd || null,
+          
+          // Qualitative Project Metrics
+          project_description: data.description?.en || "No description available",
+          categories: data.categories || [],
+          homepage: data.links?.homepage?.[0] || null,
+          whitepaper_link: data.links?.whitepaper || null
       };
 
     } catch (error) {
@@ -214,29 +232,66 @@ class SentimentAnalysisAgent {
   }
 
   /**
-   * 2. Dexscreener Liquidity Sentiment
+   * Helper: Convert Hedera Token ID (0.0.12345) to EVM Hex Address
    */
-  async fetchDexData(tokenSymbol) {
+  _toEvmAddress(tokenId) {
+      if (!tokenId || !tokenId.startsWith('0.0.')) return null;
+      const numStr = tokenId.split('.')[2];
+      try {
+          const num = BigInt(numStr);
+          let hex = num.toString(16);
+          // Pad with leading zeros to make it 40 characters (20 bytes)
+          while (hex.length < 40) {
+              hex = '0' + hex;
+          }
+          return '0x' + hex;
+      } catch (e) {
+          return null;
+      }
+  }
+
+  /**
+   * 2. GeckoTerminal Native Liquidity & Volume (Zero-Auth, Exact Matching)
+   */
+  async fetchGeckoTerminalData(tokenId) {
+    const evmAddress = this._toEvmAddress(tokenId);
+    if (!evmAddress) return { dex_listed: false, dex_risk_level: "UNKNOWN" };
+
     try {
-      const response = await this._fetchWithTimeout(`https://api.dexscreener.com/latest/dex/search?q=${tokenSymbol}`);
+      // Step 1: Fetch token-level data (liquidity reserve + market cap)
+      const tokenResponse = await this._fetchWithTimeout(`https://api.geckoterminal.com/api/v2/networks/hedera-hashgraph/tokens/${evmAddress}`);
       
-      if (!response.ok) {
-          throw new Error("Dexscreener API failed");
+      if (!tokenResponse.ok) {
+          return { dex_listed: false, dex_risk_level: "HIGH" };
       }
       
-      const data = await response.json();
-      
-      if (!data.pairs || data.pairs.length === 0) {
-          return { dex_listed: false, dex_risk_level: "HIGH" }; // No DEX liquidity means high risk
-      }
+      const tokenResData = await tokenResponse.json();
+      const tokenAttrs = tokenResData?.data?.attributes;
+      if (!tokenAttrs) return { dex_listed: false, dex_risk_level: "HIGH" };
 
-      // Aggregate liquidity and volume across pairs
-      let liquidity_usd = 0;
+      const liquidity_usd = parseFloat(tokenAttrs.total_reserve_in_usd || "0");
+      const market_cap_usd = parseFloat(tokenAttrs.market_cap_usd || "0");
+
+      // Step 2: Fetch pool-level data for accurate volume & transactions
       let volume_24h = 0;
+      let transactions_24h = 0;
 
-      for (const pair of data.pairs) {
-          liquidity_usd += pair.liquidity?.usd || 0;
-          volume_24h += pair.volume?.h24 || 0;
+      try {
+          const poolsResponse = await this._fetchWithTimeout(`https://api.geckoterminal.com/api/v2/networks/hedera-hashgraph/tokens/${evmAddress}/pools?page=1`);
+          if (poolsResponse.ok) {
+              const poolsData = await poolsResponse.json();
+              for (const pool of (poolsData?.data || [])) {
+                  const pa = pool.attributes;
+                  volume_24h += parseFloat(pa?.volume_usd?.h24 || "0");
+                  const txns = pa?.transactions?.h24;
+                  if (txns) {
+                      transactions_24h += (txns.buys || 0) + (txns.sells || 0);
+                  }
+              }
+          }
+      } catch (poolErr) {
+          // Pool fetch failed, use token-level volume as fallback
+          volume_24h = parseFloat(tokenAttrs.volume_usd?.h24 || "0");
       }
 
       let dex_risk_level = "LOW";
@@ -250,11 +305,12 @@ class SentimentAnalysisAgent {
           dex_listed: true,
           liquidity_usd,
           volume_24h,
+          market_cap_usd,
+          transactions_24h,
           dex_risk_level
       };
 
     } catch (error) {
-       // Safe fallback
        return { dex_listed: false, dex_risk_level: "UNKNOWN" };
     }
   }
@@ -395,11 +451,10 @@ class SentimentAnalysisAgent {
         }
 
         console.log(`Fetching DEX liquidity signals...`);
-        const dexData = await this.fetchDexData(symbol);
-        if (dexData) {
-            externalData.dex = dexData;
-            if (dexData.dex_listed) externalData.sources.push("dexscreener");
-        }
+        const dexData = await this.fetchGeckoTerminalData(token_id);
+        
+        externalData.dex = dexData || { dex_listed: false };
+        if (dexData?.dex_listed) externalData.sources.push("geckoterminal");
 
         if (externalData.coingecko.github_repos_url) {
             console.log(`Fetching developer activity...`);
@@ -451,10 +506,16 @@ class SentimentAnalysisAgent {
     console.log(`Calculating intelligence score...`);
 
     // --- FUSION LAYER ---
+    // Extract liquidity from GeckoTerminal
+    const combined_dex_liquidity = externalData.dex?.liquidity_usd || 0;
+    const combined_volume_24h = externalData.dex?.volume_24h || externalData.coingecko?.volume_24h || 0;
+
+    const preferred_dex_score = externalData.dex?.dex_risk_level || "HIGH";
+
     const community_intelligence_score = this.calculateCommunityIntelligence({
         local_sentiment_score: riskMetrics.community_trust_score,
         cg_score: externalData.coingecko.coingecko_community_score || 0,
-        dex_score: externalData.dex.dex_risk_level || "HIGH",
+        dex_score: preferred_dex_score,
         gh_score: externalData.github.developer_activity_risk || riskMetrics.developer_trust_risk // Fallback to local NLP
     });
 
@@ -464,20 +525,82 @@ class SentimentAnalysisAgent {
 
     // --- FINAL SUMMARY ---
     const summary = this.generateSecuritySummary(metrics, {
-        liquidity_usd: externalData.dex.liquidity_usd,
+        liquidity_usd: combined_dex_liquidity,
         developer_activity_risk: externalData.github.developer_activity_risk,
         external_risk_rating
     });
-    
+
+    // --- AI SENTIMENT ANALYSIS (LLM ENHANCEMENT) ---
+    const tokenName = name;
+    const liquidity = combined_dex_liquidity || 0;
+    const bullishPercent = externalData.coingecko.bullish_percentage || 0;
+    const bearishPercent = externalData.coingecko.bearish_percentage || 0;
+    const dexRisk = preferred_dex_score || "UNKNOWN";
+    const communityRisk = riskMetrics.community_risk_index;
+
+    // Use GeckoTerminal Market Cap if available, fallback to CoinGecko
+    const marketCap = externalData.dex?.market_cap_usd || externalData.coingecko.market_cap || 0;
+    const nvtRatio = (marketCap > 0 && combined_volume_24h > 0) 
+        ? +(marketCap / combined_volume_24h).toFixed(2) 
+        : "Unknown";
+    const projectDesc = externalData.coingecko.project_description || "Unknown";
+    const whitepaper = externalData.coingecko.whitepaper_link || "None";
+
+    const aiPrompt = `
+Analyze this token market sentiment:
+
+Token: ${tokenName}
+Project Utility: ${projectDesc.substring(0, 150)}...
+Market Cap: $${marketCap}
+Liquidity USD: $${liquidity}
+NVT Ratio: ${nvtRatio}
+Bullish sentiment: ${bullishPercent}%
+Bearish sentiment: ${bearishPercent}%
+DEX risk level: ${dexRisk}
+Community risk index: ${communityRisk}
+
+Explain:
+1 overall sentiment condition
+2 fundamental market strength (using Cap, Liquidity, and NVT)
+3 possible rug concerns
+
+Max 3 short sentences.
+`;
+
+    let sentimentSummary;
+    try {
+      sentimentSummary = await askLLM(aiPrompt);
+    } catch (err) {
+      sentimentSummary = "AI sentiment unavailable";
+    }
+
+    // Determine AI market confidence from available data
+    let ai_market_confidence = "NEUTRAL";
+    if (bullishPercent > bearishPercent && marketCap > 500000) {
+      ai_market_confidence = "STRONG";
+    } else if (bullishPercent > bearishPercent) {
+      ai_market_confidence = "MODERATE";
+    } else if (bearishPercent > 60 || liquidity < 10000) {
+      ai_market_confidence = "WEAK";
+    }
+
     // --- DATA QUALITY CALCULATIONS ---
     const api_sources = externalData.sources.length;
-    const liquidity_present = externalData.dex.dex_listed && externalData.dex.liquidity_usd > 0;
+    const liquidity_present = combined_dex_liquidity > 0;
     
     let confidence_score = (metrics.total_posts * 0.5) + (api_sources * 10) + (liquidity_present ? 15 : 0);
+    
+    // Bonuses for fundamental data
+    if (whitepaper !== "None" && whitepaper !== null) confidence_score += 10;
+    if (marketCap > 0) confidence_score += 10;
+
     // Negative factors
     if (metrics.total_posts < 20) confidence_score -= 10;
     if (!externalData.coingecko.coingecko_data_available) confidence_score -= 10;
     if (externalData.github.developer_activity_risk === "UNKNOWN" || !externalData.github.developer_activity_risk) confidence_score -= 10;
+    
+    // Penalty for impossible/extreme NVT
+    if (nvtRatio !== "Unknown" && nvtRatio > 100000) confidence_score -= 5;
     
     confidence_score = Math.floor(Math.min(100, Math.max(0, confidence_score)));
     
@@ -501,6 +624,45 @@ class SentimentAnalysisAgent {
         bullish_percentage: externalData.coingecko.bullish_percentage || 0,
         bearish_percentage: externalData.coingecko.bearish_percentage || 0,
         
+        // Comprehensive Fundamental Data
+        fundamental_data: {
+            on_chain: {
+                active_addresses: "N/A (Requires Pro Node)",
+                tx_volume_usd: externalData.dex.volume_24h || 0,
+                tx_count: "N/A",
+                network_fees: "N/A",
+                hash_rate_staked: "N/A"
+            },
+            project: {
+                description: externalData.coingecko.project_description || "Unknown",
+                categories: externalData.coingecko.categories || [],
+                homepage: externalData.coingecko.homepage || null,
+                whitepaper: externalData.coingecko.whitepaper_link || "N/A",
+                team: "N/A",
+                use_case: "N/A",
+                roadmap: "N/A",
+                competitor_analysis: "N/A"
+            },
+            financial: {
+                current_price: externalData.coingecko.current_price || 0,
+                market_cap: externalData.coingecko.market_cap || 0,
+                fdv: externalData.coingecko.fully_diluted_valuation || 0,
+                circulating_supply: externalData.coingecko.circulating_supply || 0,
+                total_supply: externalData.coingecko.total_supply || 0,
+                max_supply: externalData.coingecko.max_supply || 0,
+                vesting_schedules: "N/A",
+                liquidity_usd: combined_dex_liquidity || 0, // Use combined liquidity
+                volume_24h: combined_volume_24h || 0 // Use combined volume
+            },
+            ratios: {
+                nvt_ratio: (externalData.coingecko.market_cap && combined_volume_24h > 0) 
+                     ? +(externalData.coingecko.market_cap / combined_volume_24h).toFixed(2) 
+                     : "N/A",
+                mvrv_ratio: "N/A (Requires Historical On-Chain Data)",
+                tvl: externalData.coingecko.tvl || "N/A"
+            }
+        },
+        
         dex_listed: externalData.dex.dex_listed || false,
         liquidity_usd: externalData.dex.liquidity_usd || 0,
         volume_24h: externalData.dex.volume_24h || 0,
@@ -512,7 +674,12 @@ class SentimentAnalysisAgent {
         
         external_risk_rating,
         data_sources_used: externalData.sources,
-        summary
+        summary,
+
+        // AI-enhanced fields
+        ai_sentiment_summary: sentimentSummary,
+        ai_market_confidence,
+        data_quality_note: "AI enhanced sentiment analysis"
     };
   }
 }

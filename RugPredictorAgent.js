@@ -1,95 +1,148 @@
-/**
- * RugPredictorAgent for RugGuard Multi-Agent Architecture
- * 
- * This agent acts as the predictive AI layer, transforming multi-agent risk signals
- * into a single unified rug probability with explainability and simulation.
- * 
- * Prediction Engine: RugGuard Predictor
- * Model Type: Explainable Risk Fusion AI
- * Version: RugGuard AI v2
- */
+const askLLM = require("./llmClient");
+
 class RugPredictorAgent {
     constructor() {
         this.modelName = "RugGuard Predictor";
         this.modelVersion = "RugGuard AI v2";
         this.modelType = "Explainable Risk Fusion AI";
-        
-        // Configuration: Weights matching the specification
         this.weights = {
-            mint_risk: 0.15,
-            admin_risk: 0.15,
-            treasury_risk: 0.15,
-            holder_concentration: 0.10,
-            activity_risk: 0.10,
-            age_risk: 0.05,
-            community_sentiment: 0.10,
-            liquidity_strength: 0.10,
-            developer_activity: 0.05,
-            external_intelligence: 0.05
+            mint_risk: 0.15, admin_risk: 0.15, treasury_risk: 0.15,
+            holder_concentration: 0.10, activity_risk: 0.10, age_risk: 0.05,
+            community_sentiment: 0.10, liquidity_strength: 0.10,
+            developer_activity: 0.05, external_intelligence: 0.05
         };
     }
 
-    /**
-     * Transforms fused agent data into a predictive rug probability.
-     * @param {Object} input - Fused object { scanner, blockchain_risk, sentiment, risk_score }
-     * @returns {Object} AI Prediction Report
-     */
-    predictRisk(input) {
+    async predictRisk(input) {
         try {
-            // 1. Validation & Error Handling
             if (!input || !input.blockchain_risk || !input.risk_score) {
-                console.error("[RugPredictorAgent] Missing critical upstream pipeline data");
                 return { error: "Incomplete risk pipeline data" };
             }
 
-            if (!input.sentiment) {
-                console.warn("[RugPredictorAgent] WARNING: Missing sentiment data. Proceeding with degraded confidence.");
+            const features = this._extractFeatures(input);
+            const prediction = this._calculateProbability(features);
+            let raw_prob = Math.round(prediction.probability * 100);
+            const rug_probability = Math.max(0, Math.min(100, raw_prob));
+            
+            const triggers = this._detectTriggers(features);
+            
+            let prediction_strength = "WEAK";
+            if (rug_probability > 75 && triggers.length > 3) prediction_strength = "STRONG";
+            else if (rug_probability >= 50 && rug_probability <= 75) prediction_strength = "MODERATE";
+
+            let time_horizon = "30-90 days";
+            if (rug_probability > 75) time_horizon = "1-7 days";
+            else if (rug_probability >= 50) time_horizon = "7-30 days";
+
+            const risk_trend = this._detectTrend(input, features);
+            const top_risk_drivers = this._calculateImportance(features).slice(0, 3).map(i => i.factor);
+            const key_triggers = triggers;
+            const ai_confidence = this._calculateConfidence(input);
+            const risk_simulation = this._simulateScenarios(features, input);
+
+            let confidence_tier = "LOW";
+            if (ai_confidence > 80) confidence_tier = "HIGH";
+            else if (ai_confidence >= 60) confidence_tier = "MEDIUM";
+
+            const token_id = input.scanner?.token_id || "unknown";
+
+            // DETERMINISTIC BASE
+            const deterministic_prediction = {
+                token_id,
+                rug_probability,
+                prediction_strength,
+                time_horizon,
+                risk_trend,
+                top_risk_drivers,
+                key_triggers,
+                prediction_status: "DETERMINISTIC_ONLY",
+                ai_prediction_summary: "AI reasoning temporarily unavailable – deterministic risk analysis applied.",
+                ai_key_triggers: [],
+                ai_risk_scenario: "Prediction based on structural risk indicators.",
+                ai_confidence_reasoning: "AI unavailable during analysis.",
+                ai_recommendations: ["Monitor token activity"],
+                ai_confidence,
+                confidence_tier,
+                risk_simulation
+            };
+
+            const risk_score = input.risk_score?.final_risk_score || "unknown";
+            const mint_risk = input.blockchain_risk.mint_risk_score || "unknown";
+            const admin_risk = input.blockchain_risk.admin_control_score || "unknown";
+            const liquidity_risk = (input.sentiment && input.sentiment.dex_risk_level) ? input.sentiment.dex_risk_level : "unknown";
+            const sentiment = (input.sentiment && input.sentiment.sentiment_security_rating) ? input.sentiment.sentiment_security_rating : "neutral";
+            const community_risk = (input.sentiment && input.sentiment.community_risk_index) ? input.sentiment.community_risk_index : "unknown";
+            const market_confidence = (input.sentiment && input.sentiment.ai_market_confidence) ? input.sentiment.ai_market_confidence : "unknown";
+
+            const prompt = `You are a blockchain security risk prediction AI.
+
+Explain WHY this token has rug risk. Evaluate the provided token risk intelligence and generate a professional security explanation.
+
+INPUT DATA:
+
+Token ID: ${token_id}
+Risk Score: ${risk_score}
+Rug Probability: ${rug_probability}
+AI Confidence: ${ai_confidence}
+
+Blockchain Risks:
+- Mint Authority: ${mint_risk}
+- Admin Control: ${admin_risk}
+- Liquidity Risk: ${liquidity_risk}
+
+Sentiment Signals:
+- Market Sentiment: ${sentiment}
+- Community Risk Index: ${community_risk}
+- Market Confidence: ${market_confidence}
+
+Detected Triggers:
+${key_triggers.join(", ")}
+
+Time Horizon:
+${time_horizon}
+
+TASK:
+
+Generate:
+
+1 Predictive risk summary (2 sentences max)
+2 Key rug triggers (max 3)
+3 Risk scenario simulation: Explain what could increase the probability.
+4 AI confidence reasoning.
+5 AI Recommendations: Limit to 3 recommendations.
+
+RULES:
+
+Be concise.
+Do not invent information.
+Use only provided data. Do not output placeholders.
+Sound like a professional enterprise blockchain security report.
+Focus on investor protection.
+
+OUTPUT JSON:
+
+{
+ "ai_prediction_summary": "",
+ "ai_key_triggers": [],
+ "ai_risk_scenario": "",
+ "ai_confidence_reasoning": "",
+ "ai_recommendations": []
+}`;
+
+            let ai_analysis = {};
+            try {
+                let llmOutput = await askLLM(prompt);
+                llmOutput = llmOutput.replace(/^```json/mi, "").replace(/```/g, "").trim();
+                ai_analysis = JSON.parse(llmOutput);
+                ai_analysis.prediction_status = "FULL_AI_ANALYSIS";
+            } catch (err) {
+                console.warn("[RugPredictorAgent] LLM parsing failed:", err.message);
+                ai_analysis.prediction_status = "DETERMINISTIC_ONLY";
             }
 
-            console.log(`[RugPredictorAgent] Processing prediction for token: ${input.scanner?.token_id || "Unknown"}`);
-
-            // 2. Feature Extraction & Normalization
-            const features = this._extractFeatures(input);
-            
-            // 3. Risk Fusion Logic (Main Prediction)
-            const prediction = this._calculateProbability(features);
-            
-            // 4. Time Horizon & Level Mapping
-            const { level, horizon } = this._mapMetrics(prediction.probability);
-            
-            // 5. Trigger Detection & Feature Importance
-            const triggers = this._detectTriggers(features);
-            const importance = this._calculateImportance(features);
-            
-            // 6. Risk Trend Detection
-            const trend = this._detectTrend(input);
-            
-            // 7. Scenario Simulation
-            const simulation = this._simulateScenarios(features, input);
-            
-            // 8. AI Confidence Engine
-            const confidence = this._calculateConfidence(input);
-
-            // 9. Intelligence Tags
-            const tags = this._generateTags(features, input);
-
-            // 10. Assemble Final Output
             return {
-                token_id: input.scanner?.token_id || "Unknown",
-                rug_probability: parseFloat(prediction.probability.toFixed(2)),
-                probability_percent: Math.round(prediction.probability * 100),
-                probability_level: level,
-                time_horizon: horizon,
-                ai_confidence: confidence,
-                risk_trend: trend,
-                status: !input.sentiment ? "DEGRADED_SENTIMENT" : "FULL_DATA",
-                key_triggers: triggers,
-                feature_importance: importance,
-                risk_simulation: simulation,
-                risk_tags: tags,
-                model_type: this.modelType,
-                prediction_engine: this.modelName,
-                model_version: this.modelVersion
+                ...deterministic_prediction,
+                ...ai_analysis
             };
 
         } catch (error) {
@@ -100,167 +153,128 @@ class RugPredictorAgent {
 
     _extractFeatures(input) {
         const br = input.blockchain_risk;
-        const s = input.sentiment || {}; // Graceful handling
-        const sc = input.risk_score;
-
-        // Clamp values to 0-100 professionally
+        const s = input.sentiment || {};
         const clamp = (val) => Math.max(0, Math.min(100, val || 0));
-
         return {
             mint_risk: clamp(br.mint_risk_score),
             admin_risk: clamp(br.admin_control_score),
             holder_concentration: clamp(br.holder_concentration_score),
-            treasury_risk: clamp(br.treasury_dump_score),
-            age_risk: clamp(br.age_risk_score),
+            treasury_dump_score: clamp(br.treasury_dump_score),
             activity_risk: clamp(br.activity_risk_score),
-            community_sentiment: clamp(100 - (s.community_intelligence_score || 50)), // Neutral fallback
-            liquidity_strength: clamp(s.dex_risk_level === "HIGH" ? 90 : (s.dex_risk_level === "MEDIUM" ? 40 : (s.dex_risk_level === "LOW" ? 10 : 50))),
-            developer_activity: clamp(s.developer_activity_risk === "HIGH RISK" ? 90 : (s.developer_activity_risk === "MEDIUM" ? 50 : (s.developer_activity_risk === "LOW" ? 10 : 50))),
+            community_risk_index: clamp(s.community_risk_index || 50),
+            liquidity_strength: clamp(s.dex_risk_level === "HIGH" ? 90 : (s.dex_risk_level === "MEDIUM" ? 40 : 10)),
+            developer_activity: clamp(s.developer_activity_risk === "HIGH RISK" ? 90 : (s.developer_activity_risk === "MEDIUM" ? 50 : 10)),
             external_intelligence: clamp(s.external_risk_rating === "HIGH" ? 85 : (s.external_risk_rating === "LOW" ? 20 : 50))
         };
     }
 
-
-    _calculateProbability(features) {
-        let weightedSum = 0;
-        
-        weightedSum += features.mint_risk * this.weights.mint_risk;
-        weightedSum += features.admin_risk * this.weights.admin_risk;
-        weightedSum += features.treasury_risk * this.weights.treasury_risk;
-        weightedSum += features.holder_concentration * this.weights.holder_concentration;
-        weightedSum += features.activity_risk * this.weights.activity_risk;
-        weightedSum += features.age_risk * this.weights.age_risk;
-        weightedSum += features.community_sentiment * this.weights.community_sentiment;
-        weightedSum += features.liquidity_strength * this.weights.liquidity_strength;
-        weightedSum += features.developer_activity * this.weights.developer_activity;
-        weightedSum += features.external_intelligence * this.weights.external_intelligence;
-
-        const probability = weightedSum / 100; // max_possible_score is 100
-        return { probability: Math.max(0, Math.min(1, probability)) };
-    }
-
-    _mapMetrics(prob) {
-        let level = "LOW";
-        if (prob > 0.75) level = "HIGH";
-        else if (prob > 0.50) level = "ELEVATED";
-        else if (prob > 0.25) level = "GUARDED";
-
-        let horizon = "Low immediate risk (30+ days)";
-        if (prob > 0.70) horizon = "3-7 days";
-        else if (prob >= 0.40) horizon = "7-30 days";
-
-        return { level, horizon };
-    }
-
-    _detectTriggers(features) {
-        const items = [
-            { id: "Active mint authority", val: features.mint_risk },
-            { id: "Treasury concentration", val: features.treasury_risk },
-            { id: "Low liquidity depth", val: features.liquidity_strength },
-            { id: "Developer inactivity", val: features.developer_activity },
-            { id: "Negative sentiment trend", val: features.community_sentiment },
-            { id: "Admin control vulnerability", val: features.admin_risk },
-            { id: "Holder concentration", val: features.holder_concentration }
-        ];
-
-        return items
-            .sort((a, b) => b.val - a.val)
-            .slice(0, 3)
-            .filter(i => i.val > 40) // Only return significant triggers
-            .map(i => i.id);
-    }
-
-    _calculateImportance(features) {
-        const importance = [];
-        const labels = {
-            mint_risk: "Mint Risk",
-            admin_risk: "Admin Control",
-            treasury_risk: "Treasury Risk",
-            holder_concentration: "Holder Concentration",
-            activity_risk: "Activity Risk",
-            age_risk: "Age Risk",
-            community_sentiment: "Community Sentiment",
-            liquidity_strength: "Liquidity Strength",
-            developer_activity: "Developer Activity",
-            external_intelligence: "External Intelligence"
-        };
-
-        for (const [key, weight] of Object.entries(this.weights)) {
-            const impact = Math.round((features[key] * weight));
-            importance.push({ factor: labels[key], impact });
+    _calculateProbability(f) {
+        let sum = 0;
+        for (const [k, w] of Object.entries(this.weights)) {
+            if (f[k] !== undefined) sum += f[k] * w;
         }
-
-        return importance.sort((a, b) => b.impact - a.impact).slice(0, 5);
+        return { probability: Math.max(0, Math.min(1, sum / 100)) };
     }
 
-    _detectTrend(input) {
+    _detectTriggers(f) {
+        return [
+            { id: "Token supply can be increased by admin", val: f.mint_risk },
+            { id: "Treasury wallet concentration detected", val: f.treasury_dump_score },
+            { id: "Critically low liquidity depth", val: f.liquidity_strength },
+            { id: "Significant developer inactivity", val: f.developer_activity },
+            { id: "Negative community sentiment", val: f.community_risk_index },
+            { id: "Centralized administrative control detected", val: f.admin_risk },
+            { id: "High holder concentration", val: f.holder_concentration }
+        ].sort((a, b) => b.val - a.val).filter(i => i.val > 40).map(i => i.id);
+    }
+
+    _calculateImportance(f) {
+        const labels = {
+            mint_risk: "Active mint authority", admin_risk: "Centralized governance", treasury_dump_score: "Treasury concentration",
+            holder_concentration: "Holder concentration", activity_risk: "Low transactional activity", community_risk_index: "Negative community sentiment",
+            liquidity_strength: "Shallow liquidity pools", developer_activity: "Developer abandonment", external_intelligence: "Negative external signals"
+        };
+        return Object.entries(labels).map(([k, label]) => ({ factor: label, val: f[k] || 0 }))
+            .sort((a, b) => b.val - a.val);
+    }
+
+    _detectTrend(input, f) {
         const s = input.sentiment || {};
         const br = input.blockchain_risk;
-        
-        // Logic: High liquidity + low sentiment vol -> STABLE
-        if (s.liquidity_usd && s.liquidity_usd > 200000 && s.community_risk_index < 30) return "STABLE";
-        
-        // Logic: High admin risk + low activity -> DETERIORATING
-        if (br.admin_control_score > 70 && br.activity_risk_score > 60) return "DETERIORATING";
-        
-        return "STABLE"; // Default
+        if (s.community_risk_index > 60 && br.admin_control_score > 60) return "DETERIORATING";
+        if (s.community_risk_index < 40 && br.admin_control_score < 40) return "IMPROVING";
+        return "STABLE";
     }
 
     _simulateScenarios(features, input) {
         const scenarios = [];
+        const clamp = (val) => Math.max(0, Math.min(100, val || 0));
         
         // 1. Liquidity drops 20%
-        const s1Features = { ...features, liquidity_strength: Math.min(100, features.liquidity_strength * 1.25) };
+        const s1Features = { ...features, liquidity_strength: clamp(features.liquidity_strength * 1.25) };
         scenarios.push({
             scenario: "Liquidity drops 20%",
-            new_probability: parseFloat(this._calculateProbability(s1Features).probability.toFixed(2))
+            new_probability: Math.round(this._calculateProbability(s1Features).probability * 100)
         });
 
         // 2. Admin key removed
-        const s2Features = { ...features, admin_risk: 0, mint_risk: features.mint_risk * 0.5 };
+        const s2Features = { ...features, admin_risk: 0, mint_risk: clamp(features.mint_risk * 0.5) };
         scenarios.push({
             scenario: "Admin key removed",
-            new_probability: parseFloat(this._calculateProbability(s2Features).probability.toFixed(2))
+            new_probability: Math.round(this._calculateProbability(s2Features).probability * 100)
         });
 
         // 3. Transaction activity increases
-        const s3Features = { ...features, activity_risk: Math.max(0, features.activity_risk * 0.5) };
+        const s3Features = { ...features, activity_risk: clamp(features.activity_risk * 0.5) };
         scenarios.push({
             scenario: "Transaction activity increases",
-            new_probability: parseFloat(this._calculateProbability(s3Features).probability.toFixed(2))
+            new_probability: Math.round(this._calculateProbability(s3Features).probability * 100)
+        });
+
+        // 4. Liquidity increases to $1 million
+        const s4Features = { ...features, liquidity_strength: 10 };
+        scenarios.push({
+            scenario: "Liquidity increases to $1 million",
+            new_probability: Math.round(this._calculateProbability(s4Features).probability * 100)
+        });
+
+        // 5. Admin key removed AND Liquidity increases to $1 million (Combined)
+        const s5Features = { ...features, admin_risk: 0, mint_risk: clamp(features.mint_risk * 0.5), liquidity_strength: 10 };
+        scenarios.push({
+            scenario: "Admin key removed AND Liquidity increases to $1 million",
+            new_probability: Math.round(this._calculateProbability(s5Features).probability * 100)
         });
 
         return scenarios;
     }
 
     _calculateConfidence(input) {
-        const sc = input.risk_score;
-        const s = input.sentiment || {};
+        // Start with base from RiskScoringAgent (typically 70-80)
+        let base = input.risk_score.confidence_score || 80;
         
-        let baseConfidence = sc.confidence_score || 80;
+        if (!input.sentiment) return Math.max(10, base - 25);
         
-        // Missing dev data reduces confidence
-        if (!input.sentiment) {
-            baseConfidence -= 25; // Significant penalty for missing sentiment pipeline
-        } else {
-            if (s.developer_activity_risk === "UNKNOWN") baseConfidence -= 15;
-            if (!s.dex_listed) baseConfidence -= 10;
-        }
-        
-        return Math.max(10, Math.min(100, baseConfidence));
-    }
+        const s = input.sentiment;
+        const br = input.blockchain_risk;
 
+        // Decrease confidence if key security data is missing or "UNKNOWN"
+        if (s.developer_activity_risk === "UNKNOWN") base -= 10;
+        if (s.sentiment_security_rating === "UNKNOWN") base -= 5;
+        if (!s.dex_listed) base -= 10;
 
-    _generateTags(features, input) {
-        const tags = [];
-        if (features.mint_risk > 60 || features.admin_risk > 60) tags.push("CENTRALIZATION_RISK");
-        if (features.activity_risk > 70) tags.push("LOW_ACTIVITY");
-        if (features.liquidity_strength > 70) tags.push("LOW_LIQUIDITY");
-        if (features.admin_risk > 50) tags.push("ADMIN_CONTROL");
-        if (features.community_sentiment < 30) tags.push("HEALTHY_SENTIMENT");
-        if (features.age_risk < 30) tags.push("MATURE_TOKEN");
+        // Decrease confidence if risk signals are contradictory or extreme (making the prediction harder)
+        if (br.mint_risk_score > 80) base -= 5;
+        if (br.admin_control_score > 80) base -= 5;
         
-        return tags;
+        // Decrease confidence if liquidity is very low (less reliable market data)
+        if (s.liquidity_usd < 50000 && s.liquidity_usd > 0) base -= 5;
+        if (s.liquidity_usd === 0) base -= 10;
+
+        // Increase confidence if data is exceptionally strong/transparent
+        if (s.data_quality === "HIGH") base += 5;
+        if (s.posts_analyzed > 50) base += 5;
+
+        return Math.min(95, Math.max(10, Math.round(base)));
     }
 }
 

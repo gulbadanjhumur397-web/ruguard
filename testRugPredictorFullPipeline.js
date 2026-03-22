@@ -41,7 +41,7 @@ async function runFullValidation() {
 
         // 4. Risk Scoring
         console.log("[4/5] Running RiskScoringAgent...");
-        const riskScore = scoringAgent.calculateRisk({
+        const riskScore = await scoringAgent.calculateRisk({
             scanner,
             blockchain,
             sentiment

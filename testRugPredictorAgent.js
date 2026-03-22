@@ -34,7 +34,7 @@ async function runTests() {
         }
     };
 
-    const highResult = agent.predictRisk(highRiskInput);
+    const highResult = await agent.predictRisk(highRiskInput);
     console.log("Result Probability:", highResult.rug_probability);
     console.log("Level:", highResult.probability_level);
     console.log("Horizon:", highResult.time_horizon);
@@ -73,7 +73,7 @@ async function runTests() {
         }
     };
 
-    const lowResult = agent.predictRisk(lowRiskInput);
+    const lowResult = await agent.predictRisk(lowRiskInput);
     console.log("Result Probability:", lowResult.rug_probability);
     console.log("Level:", lowResult.probability_level);
     
@@ -87,7 +87,7 @@ async function runTests() {
     console.log("\n[TEST 3] Testing Scenario Simulation...");
     console.log("Scenarios:", JSON.stringify(lowResult.risk_simulation, null, 2));
     
-    if (lowResult.risk_simulation.length === 3) {
+    if (lowResult.risk_simulation && lowResult.risk_simulation.length === 3) {
         console.log("✅ Simulation Test Passed");
     } else {
         console.error("❌ Simulation Test Failed");
@@ -95,7 +95,7 @@ async function runTests() {
 
     // --- TEST CASE 4: ERROR HANDLING ---
     console.log("\n[TEST 4] Testing Error Handling...");
-    const invalidResult = agent.predictRisk({});
+    const invalidResult = await agent.predictRisk({});
     if (invalidResult.error) {
         console.log("✅ Error Handling Test Passed");
     } else {

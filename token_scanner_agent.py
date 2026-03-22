@@ -172,13 +172,26 @@ class TokenScannerAgent:
         return self._make_request(url)
 
     def _fetch_balances(self, token_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch token balances from the Mirror Node."""
-        url = f"{self.base_url}/tokens/{token_id}/balances"
-        return self._make_request(url)
+        """Fetch token balances from the Mirror Node with pagination."""
+        all_balances = []
+        url = f"{self.base_url}/tokens/{token_id}/balances?limit=100"
+        max_pages = 4  # Up to 400 holders
+        for _ in range(max_pages):
+            data = self._make_request(url)
+            if not data:
+                break
+            all_balances.extend(data.get("balances", []))
+            # Check if there's a next page
+            next_link = data.get("links", {}).get("next")
+            if next_link:
+                url = f"https://mainnet-public.mirrornode.hedera.com{next_link}"
+            else:
+                break
+        return {"balances": all_balances}
 
     def _fetch_transactions(self, account_id: str) -> Optional[Dict[str, Any]]:
         """Fetch token transactions from the Mirror Node by Treasury Account."""
-        url = f"{self.base_url}/transactions?account.id={account_id}"
+        url = f"{self.base_url}/transactions?account.id={account_id}&limit=100"
         return self._make_request(url)
 
     def _calculate_holder_metrics(self, balances_data: Dict[str, Any], total_supply: int, treasury_account_id: str) -> Dict[str, Any]:

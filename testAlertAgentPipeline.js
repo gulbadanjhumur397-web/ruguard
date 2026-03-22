@@ -74,7 +74,7 @@ async function runAlertAgentPipelineTest() {
         // ═══════════════════════════════════════════════════════════
         console.log("[4/6] Running RiskScoringAgent...");
         const scoringAgent = new RiskScoringAgent();
-        const riskScore = scoringAgent.calculateRisk({ scanner, blockchain, sentiment });
+        const riskScore = await scoringAgent.calculateRisk({ scanner, blockchain, sentiment });
         console.log(`  → Risk Score OK: score=${riskScore.rug_risk_score} level=${riskScore.risk_level}\n`);
 
         // ═══════════════════════════════════════════════════════════

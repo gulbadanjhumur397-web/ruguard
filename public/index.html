@@ -855,7 +855,7 @@
             const r = document.getElementById('results');
             const alertCls = getAlertClass(d.alert_level);
             const scoreColor = getScoreColor(d.rug_risk_score);
-            const probPercent = Math.round((d.predicted_probability || 0) * 100);
+            const probPercent = Math.round(d.predicted_probability || 0);
 
             r.innerHTML = `
                 <!-- Header -->

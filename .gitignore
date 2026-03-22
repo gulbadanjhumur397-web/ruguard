@@ -27,3 +27,9 @@ npm-debug.log*
 # Build artifacts
 dist/
 build/
+
+# Database/Memory
+memory.json
+db.sqlite
+*.sqlite
+*.sqlite-journal

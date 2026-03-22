@@ -1,71 +1,128 @@
-/**
- * AlertAgent for RugGuard Multi-Agent Security Pipeline
- * 
- * Action Layer — converts AI risk predictions into security alerts,
- * human-readable warnings, and actionable recommendations.
- * 
- * Consumes output from:
- *   - RiskScoringAgent  → { rug_risk_score, risk_level, risk_flags, ... }
- *   - RugPredictorAgent → { rug_probability, probability_level, key_triggers, ... }
- * 
- * Agent: RugGuard AlertAgent v1
- */
+const OpenAI = require("openai");
+
+// AlertAgent for RugGuard Multi-Agent Security Pipeline
+// converts AI risk predictions into security alerts and recommendations.
 class AlertAgent {
+    constructor() {
+        this.openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+    }
+
+    /**
+     * Wraps a promise with a timeout.
+     */
+    _withTimeout(promise, ms) {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`LLM request timed out after ${ms}ms`)), ms);
+            promise.then(value => { clearTimeout(timer); resolve(value); })
+                   .catch(err => { clearTimeout(timer); reject(err); });
+        });
+    }
 
     /**
      * Generate a complete security alert from upstream pipeline data.
-     * @param {Object} input - { risk_score: {RiskScoringAgent output}, prediction: {RugPredictorAgent output} }
-     * @returns {Object} Structured security alert or error object
+     * @param {Object} input - { risk_score, prediction }
      */
-    generateAlert(input) {
+    async generateAlert(input) {
         try {
-            // ── Input Validation ───────────────────────────────────────
             if (!input || !input.risk_score || !input.prediction) {
-                console.error("[AlertAgent] Missing required pipeline data");
-                return { error: "Missing prediction data", agent: "RugGuard AlertAgent v1" };
+                throw new Error("Missing required pipeline data (risk_score or prediction)");
             }
 
-            const rs = input.risk_score;   // RiskScoringAgent output
-            const pr = input.prediction;   // RugPredictorAgent output
-
-            console.log(`[AlertAgent] Processing alert for token: ${rs.token_id || pr.token_id || "Unknown"}`);
+            const rs = input.risk_score;
+            const pr = input.prediction;
 
             // ── Feature Extraction ─────────────────────────────────────
-            const token_id          = rs.token_id          || pr.token_id          || "Unknown";
-            const rug_risk_score    = rs.rug_risk_score    ?? 0;
-            const final_risk_level  = rs.risk_level        || "LOW";
-            const rug_probability   = pr.rug_probability   ?? 0;
-            const probability_level = pr.probability_level || "LOW";
-            const ai_confidence     = pr.ai_confidence     ?? 0;
-            const key_triggers      = pr.key_triggers      || [];
-            const risk_tags         = pr.risk_tags         || [];
-            const risk_trend        = pr.risk_trend        || "STABLE";
+            const token_id = rs.token_id || pr.token_id || "Unknown";
+            const rug_risk_score = rs.rug_risk_score ?? 0;
+            const final_risk_level = rs.risk_level || "LOW";
+            const rug_probability = pr.rug_probability ?? 0;
+            const confidence_score = pr.ai_confidence ?? 0;
+            const key_triggers = pr.key_triggers || [];
+            
+            // 9 ADD ALERT SCORE always matches final_risk_score
+            // rs.final_risk_score has the RiskScoringAgent final risk. If not, fallback to rug_risk_score.
+            const alert_score = rs.final_risk_score !== undefined ? rs.final_risk_score : rug_risk_score;
 
-            // ── Alert Level Logic ──────────────────────────────────────
-            const alert_level = this._resolveAlertLevel(rug_probability);
+            // 1 ALERT CLASSIFICATION
+            const alert_level = this._resolveAlertLevel(alert_score);
 
             // ── Alert Trigger Rules ────────────────────────────────────
-            const alert_triggered = this._evaluateTrigger(rug_probability, final_risk_level, key_triggers);
+            const alert_triggered = this._evaluateTrigger(rug_probability, final_risk_level, key_triggers, alert_score);
 
-            // ── Alert Type Classification ──────────────────────────────
-            const alert_type = this._classifyAlertType(alert_level);
+            // 2 ALERT TYPE DETECTION
+            const alert_type = this._classifyAlertType(rs.primary_risk_factor, rs.top_risk_factors, rs.risk_velocity, key_triggers);
 
-            // ── Human-Readable Warnings ────────────────────────────────
+            // 3 PRIMARY WARNING ENGINE
             const primary_warning = this._buildPrimaryWarning(key_triggers, final_risk_level, rug_probability);
-            const risk_summary    = this._buildRiskSummary(rug_risk_score, final_risk_level, key_triggers);
 
-            // ── Security Recommendations ───────────────────────────────
-            const recommendations = this._generateRecommendations(key_triggers, risk_tags, rs.risk_flags || []);
+            // Risk Summary (existing logic updated)
+            const risk_summary = this._buildRiskSummary(alert_score, key_triggers);
 
-            // ── Monitoring & Posture ───────────────────────────────────
-            const monitoring_status = rug_probability > 0.40 ? "ACTIVE_MONITORING" : "PASSIVE_MONITORING";
-            const security_posture  = this._resolveSecurityPosture(rug_probability);
+            // 4 SECURITY POSTURE
+            const security_posture = this._resolveSecurityPosture(final_risk_level);
 
-            // ── Alert Score ────────────────────────────────────────────
-            const probability_percent = pr.probability_percent ?? Math.round(rug_probability * 100);
-            const alert_score = Math.round((rug_risk_score + probability_percent) / 2);
+            // 5 MONITORING STATUS
+            const monitoring_status = this._resolveMonitoringStatus(alert_score);
 
-            // ── Final Output ───────────────────────────────────────────
+            // 8 AI ALERT CONFIDENCE
+            const ai_confidence = Math.max(0, Math.min(100, Math.round(confidence_score)));
+
+            // ── AI Alert Generation ────────────────────────────────────
+            // 12 ADD FALLBACK AI STRUCTURE (default values)
+            let ai_alert_summary = "AI alert analysis unavailable. Deterministic monitoring active.";
+            let recommendations = ["Monitor token activity"];
+            let alert_generation_mode = "DETERMINISTIC_ONLY";
+
+            // If we have openai
+            if (this.openai && alert_triggered) {
+                try {
+                    const prompt = `
+Token ID: ${token_id}
+Alert Level: ${alert_level}
+Triggers: ${key_triggers.join(", ") || "None"}
+Primary Warning: ${primary_warning}
+
+You are a blockchain security monitoring system.
+Generate a JSON object with exactly two keys:
+1. "ai_alert_summary": Explain why the alert triggered, the main danger, and what investors should watch (2-3 sentences max).
+2. "recommendations": Array of exactly 3 concise, actionable security actions.
+Do NOT hallucinate. Do not use markdown inside values. Return only the JSON object.`;
+
+                    // typical model as per repo usage
+                    const response = await this._withTimeout(this.openai.chat.completions.create({
+                        model: "gpt-4o-mini",
+                        messages: [{ role: "user", content: prompt }],
+                        temperature: 0.2,
+                        max_tokens: 200
+                    }), 5000);
+
+                    let content = response.choices[0].message.content || "{}";
+                    // Strip markdown
+                    content = content.replace(/```json/g, "").replace(/```/g, "").trim();
+                    
+                    // Parse safely
+                    const parsed = JSON.parse(content);
+                    
+                    if (parsed.ai_alert_summary) ai_alert_summary = parsed.ai_alert_summary;
+                    if (Array.isArray(parsed.recommendations) && parsed.recommendations.length > 0) {
+                        recommendations = parsed.recommendations.slice(0, 3);
+                        // pad missing to 3
+                        while (recommendations.length < 3) recommendations.push("Monitor token activity");
+                    } else if (Array.isArray(parsed.recommendations)) {
+                        recommendations = ["Monitor token activity", "Review token periodically", "Watch for large transfers"];
+                    }
+                    
+                    // 10 ADD DECISION MODE
+                    alert_generation_mode = "HYBRID_AI";
+                } catch (e) {
+                    console.warn("[AlertAgent] AI generation failed, using deterministic fallback.", e.message);
+                }
+            } else if (!alert_triggered) {
+                ai_alert_summary = "Token risk is below alert thresholds. No immediate danger detected.";
+                recommendations = ["Continue standard security monitoring", "Review token periodically", "Watch for sudden liquidity drops"];
+            }
+
+            // 13 PROFESSIONAL OUTPUT STRUCTURE
             return {
                 token_id,
                 alert_triggered,
@@ -73,164 +130,118 @@ class AlertAgent {
                 alert_type,
                 primary_warning,
                 risk_summary,
-                recommendations,
-                monitoring_status,
                 security_posture,
+                monitoring_status,
                 alert_score,
+                ai_alert_summary,
+                recommendations,
                 ai_confidence,
-                agent: "RugGuard AlertAgent v1"
+                alert_generation_mode
             };
 
         } catch (error) {
-            console.error("[AlertAgent] Alert generation failure:", error.message);
-            return { error: "Alert generation failed", details: error.message, agent: "RugGuard AlertAgent v1" };
+            // fallback protection - 11 ALERT STABILITY SAFETY
+            console.error("[AlertAgent] Critical generation failure:", error.message);
+            const token_id = input?.prediction?.token_id || input?.risk_score?.token_id || "Unknown";
+            const confidence_score = input?.prediction?.ai_confidence ?? 0;
+            
+            // 12 FALLBACK AI STRUCTURE
+            return {
+                token_id,
+                alert_triggered: false,
+                alert_level: "INFO",
+                alert_type: "RISK_MONITOR",
+                primary_warning: "Monitoring active. No critical threats processed.",
+                risk_summary: "System error during alert processing. Defaulting to safe values.",
+                security_posture: "CAUTION",
+                monitoring_status: "WATCHLIST",
+                alert_score: 0,
+                ai_alert_summary: "AI alert analysis unavailable. Deterministic monitoring active.",
+                recommendations: ["Monitor token activity"],
+                ai_confidence: Math.max(0, Math.min(100, Math.round(confidence_score))),
+                alert_generation_mode: "DETERMINISTIC_ONLY"
+            };
         }
     }
 
-    // ── Private Helpers ────────────────────────────────────────────────
+    // ── Private Helpers (deterministic alert logic) ────────────────────
 
-    /**
-     * Map rug probability to alert severity level.
-     */
-    _resolveAlertLevel(prob) {
-        if (prob > 0.75) return "CRITICAL";
-        if (prob > 0.50) return "HIGH";
-        if (prob > 0.30) return "MEDIUM";
-        return "LOW";
+    // 1 ALERT CLASSIFICATION
+    _resolveAlertLevel(score) {
+        if (score >= 86) return "CRITICAL";
+        if (score >= 66) return "HIGH";
+        if (score >= 46) return "MEDIUM";
+        if (score >= 26) return "LOW";
+        return "INFO";
     }
 
-    /**
-     * Determine whether an alert should fire based on multiple criteria.
-     */
-    _evaluateTrigger(prob, riskLevel, triggers) {
-        if (prob > 0.40) return true;
-        if (riskLevel === "MEDIUM" || riskLevel === "HIGH" || riskLevel === "CRITICAL") return true;
-
+    _evaluateTrigger(prob, riskLevel, triggers, score) {
+        if (prob > 0.40 || score > 45) return true;
+        if (["MEDIUM", "HIGH", "CRITICAL", "VERY_HIGH"].includes(riskLevel)) return true;
         const criticalTriggers = ["Active mint authority", "Admin control vulnerability", "Treasury concentration"];
-        if (triggers.some(t => criticalTriggers.includes(t))) return true;
-
-        return false;
+        return triggers.some(t => criticalTriggers.includes(t));
     }
 
-    /**
-     * Classify the alert into operational alert categories.
-     */
-    _classifyAlertType(level) {
-        if (level === "CRITICAL") return "CRITICAL_THREAT";
-        if (level === "HIGH")     return "SECURITY_WARNING";
+    // 2 ALERT TYPE DETECTION
+    _classifyAlertType(primaryRiskFactor = "", topRiskFactors = [], riskVelocity = 0, keyTriggers = []) {
+        const factorStr = `${primaryRiskFactor} ${topRiskFactors.join(" ")} ${keyTriggers.join(" ")}`.toLowerCase();
+        
+        if (factorStr.includes("mint") || factorStr.includes("admin") || factorStr.includes("governance") || factorStr.includes("control")) {
+            return "GOVERNANCE_RISK";
+        }
+        if (factorStr.includes("liquid") || factorStr.includes("pool") || factorStr.includes("slippage")) {
+            return "LIQUIDITY_RISK";
+        }
+        if (factorStr.includes("sentiment") || factorStr.includes("community") || factorStr.includes("fud")) {
+            return "SENTIMENT_RISK";
+        }
+        if (factorStr.includes("rug") || factorStr.includes("scam") || factorStr.includes("dump")) {
+            return "RUG_WARNING";
+        }
         return "RISK_MONITOR";
     }
 
-    /**
-     * Build a professional, human-readable primary warning string.
-     */
+    // 3 PRIMARY WARNING ENGINE
     _buildPrimaryWarning(triggers, riskLevel, prob) {
-        // Map common triggers to plain-language warnings
-        const warningMap = {
-            "Active mint authority":        "Token has active mint authority creating supply inflation risk.",
-            "Treasury concentration":       "Large treasury concentration detected — potential dump vector.",
-            "Admin control vulnerability":  "Admin key present allowing unilateral contract changes.",
-            "Low liquidity depth":          "Insufficient liquidity depth increases exit slippage risk.",
-            "Holder concentration":         "Whale-dominated holder distribution creates price manipulation risk.",
-            "Developer inactivity":         "No recent developer activity signals possible project abandonment.",
-            "Negative sentiment trend":     "Community sentiment is declining — potential loss of confidence."
+        const map = {
+            "Active mint authority": "Token has active mint authority creating supply inflation risk.",
+            "Treasury concentration": "Large treasury concentration detected — potential dump vector.",
+            "Admin control vulnerability": "Admin key present allowing unilateral contract changes.",
+            "Low liquidity depth": "Insufficient liquidity depth increases exit slippage risk.",
+            "Holder concentration": "Whale-dominated holder distribution creates price manipulation risk.",
+            "Developer inactivity": "No recent developer activity signals possible project abandonment.",
+            "Negative sentiment trend": "Negative community sentiment increasing volatility risk."
         };
-
-        // Use the top trigger for the primary warning
-        if (triggers.length > 0 && warningMap[triggers[0]]) {
-            return warningMap[triggers[0]];
+        for (const t of triggers) {
+            if (map[t]) return map[t];
         }
-
-        // Fallback: generate from risk level
-        if (riskLevel === "CRITICAL" || prob > 0.75) {
-            return "Token exhibits critical security indicators — immediate review recommended.";
-        }
-        if (riskLevel === "HIGH" || prob > 0.50) {
-            return "Elevated risk signals detected across multiple security vectors.";
-        }
-        if (riskLevel === "MEDIUM" || prob > 0.30) {
-            return "Moderate risk indicators present — continued monitoring advised.";
-        }
+        if (riskLevel === "CRITICAL" || riskLevel === "VERY_HIGH" || prob > 0.75) return "Token exhibits critical security indicators — immediate review recommended.";
+        if (riskLevel === "HIGH" || prob > 0.50) return "Elevated risk signals detected across multiple security vectors.";
+        if (riskLevel === "MEDIUM" || prob > 0.30) return "Moderate risk indicators present — continued monitoring advised.";
         return "Token security profile within acceptable parameters.";
     }
 
-    /**
-     * Generate a concise risk summary sentence.
-     */
-    _buildRiskSummary(score, riskLevel, triggers) {
+    _buildRiskSummary(score, triggers) {
         const triggerStr = triggers.length > 0 ? triggers.join(", ").toLowerCase() : "general risk factors";
-
-        if (riskLevel === "CRITICAL" || score > 80) {
-            return `Critical rug risk (score: ${score}) driven by ${triggerStr}. Immediate action required.`;
-        }
-        if (riskLevel === "HIGH" || score > 60) {
-            return `High rug risk (score: ${score}) due to ${triggerStr}. Enhanced monitoring active.`;
-        }
-        if (riskLevel === "MEDIUM" || score > 30) {
-            return `Moderate rug risk (score: ${score}) due to ${triggerStr}. Standard monitoring in place.`;
-        }
+        if (score >= 86) return `Critical rug risk (score: ${score}) driven by ${triggerStr}. Immediate action required.`;
+        if (score >= 66) return `High rug risk (score: ${score}) due to ${triggerStr}. Enhanced monitoring active.`;
+        if (score >= 46) return `Moderate rug risk (score: ${score}) due to ${triggerStr}. Standard monitoring in place.`;
         return `Low rug risk (score: ${score}). No significant threats identified at this time.`;
     }
 
-    /**
-     * Generate up to 3 actionable security recommendations based on triggers and flags.
-     */
-    _generateRecommendations(triggers, tags, riskFlags) {
-        const pool = [];
-
-        // Trigger-based recommendations
-        const triggerRecs = {
-            "Active mint authority":        "Monitor token supply changes and mint transaction history for unexpected inflation.",
-            "Treasury concentration":       "Track treasury wallet transactions for large outgoing transfers.",
-            "Low liquidity depth":          "Monitor liquidity pool depth and watch for sudden withdrawals.",
-            "Admin control vulnerability":  "Verify governance controls and audit admin key permissions.",
-            "Holder concentration":         "Monitor whale wallets for coordinated sell-offs or transfer patterns.",
-            "Developer inactivity":         "Investigate developer engagement and verify project roadmap commitments.",
-            "Negative sentiment trend":     "Assess community channels for emerging FUD and manipulated narratives."
-        };
-
-        triggers.forEach(t => { if (triggerRecs[t]) pool.push(triggerRecs[t]); });
-
-        // Tag-based recommendations (fill remaining slots)
-        const tagRecs = {
-            "CENTRALIZATION_RISK":  "Evaluate decentralization roadmap and multi-sig implementation.",
-            "LOW_ACTIVITY":         "Review on-chain activity trends for signs of wash trading or abandonment.",
-            "LOW_LIQUIDITY":        "Set liquidity threshold alerts to detect pool drain events.",
-            "ADMIN_CONTROL":        "Request disclosure of admin key holder identities and timelock status."
-        };
-
-        tags.forEach(t => { if (tagRecs[t] && !pool.includes(tagRecs[t])) pool.push(tagRecs[t]); });
-
-        // Risk-flag-based recommendations (fill remaining slots)
-        const flagRecs = {
-            "MINT_AUTHORITY_EXISTS":          "Verify mint history and supply ceiling constraints.",
-            "ADMIN_KEY_PRESENT":              "Monitor admin wallet activity for privilege escalation.",
-            "HIGH_HOLDER_CONCENTRATION":      "Set position-size alerts on top holder wallets.",
-            "LARGE_TREASURY_RESERVE":         "Watch treasury account for large outgoing transfers.",
-            "NEW_TOKEN_LISTING":              "Exercise caution — newly listed tokens carry elevated risk.",
-            "NEGATIVE_COMMUNITY_SENTIMENT":   "Investigate sources of community negativity.",
-            "LOW_LIQUIDITY_WARNING":          "Monitor liquidity pool changes and DEX pair health."
-        };
-
-        riskFlags.forEach(f => { if (flagRecs[f] && !pool.includes(flagRecs[f])) pool.push(flagRecs[f]); });
-
-        // Guarantee at least one recommendation
-        if (pool.length === 0) {
-            pool.push("Continue standard security monitoring — no critical triggers detected.");
-        }
-
-        // Return the top 3 most relevant recommendations
-        return pool.slice(0, 3);
+    // 4 SECURITY POSTURE
+    _resolveSecurityPosture(level) {
+        if (level === "VERY_HIGH" || level === "CRITICAL") return "CRITICAL";
+        if (level === "HIGH") return "DANGEROUS";
+        if (level === "MEDIUM") return "CAUTION";
+        return "SAFE";
     }
 
-    /**
-     * Map rug probability to a security posture designation.
-     */
-    _resolveSecurityPosture(prob) {
-        if (prob > 0.75) return "HIGH_RISK";
-        if (prob > 0.50) return "AT_RISK";
-        if (prob > 0.30) return "CAUTION";
-        return "SAFE";
+    // 5 MONITORING STATUS
+    _resolveMonitoringStatus(score) {
+        if (score > 45) return "ACTIVE_MONITORING";
+        if (score >= 25) return "WATCHLIST";
+        return "NO_ALERT";
     }
 }
 

@@ -201,7 +201,7 @@ async function runPipeline() {
 
     try {
         const agent = new RiskScoringAgent();
-        riskScore = agent.calculateRisk({ scanner, blockchain: blockchainRisk, sentiment });
+        riskScore = await agent.calculateRisk({ scanner, blockchain: blockchainRisk, sentiment });
 
         console.log("\n===== RISK SCORING OUTPUT =====");
         console.log(JSON.stringify(riskScore, null, 2));
