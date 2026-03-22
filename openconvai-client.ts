@@ -256,7 +256,7 @@ export class OpenConvAIClient {
         }
         
         try {
-            await this.hcsClient.submitMessage({
+            await this.hcsClient.sendMessage({
                 TopicID: replyTopicId,
                 Message: JSON.stringify(payload)
             });
@@ -286,7 +286,7 @@ export class OpenConvAIClient {
         this.runtime.logger.warn(`[OpenConvAI] 🚨 -> Payload: ${alertPayload}`);
 
         try {
-            await this.hcsClient.submitMessage({
+            await this.hcsClient.sendMessage({
                 TopicID: this.globalSirenTopicId,
                 Message: alertPayload
             });
