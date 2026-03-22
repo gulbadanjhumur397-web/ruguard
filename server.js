@@ -42,13 +42,15 @@ const conversationManager = new ConversationManager();
 
 // ── ElizaOS Autonomous Runtime (Agentic Brain) ───────────────────
 let globalElizaRuntime = null;
-try {
-    const { RugGuardElizaRuntime } = require("./dist/eliza-runtime.js");
-    globalElizaRuntime = new RugGuardElizaRuntime();
-    console.log("🟢 ElizaOS Autonomous Runtime ACTIVE — Proactive Monitor Started!");
-} catch (e) {
-    console.warn("🟡 ElizaOS Runtime not compiled yet. Falling back to legacy pipeline.", e.message);
-}
+(async () => {
+    try {
+        const { RugGuardElizaRuntime } = await import("./dist/eliza-runtime.mjs");
+        globalElizaRuntime = new RugGuardElizaRuntime();
+        console.log("🟢 ElizaOS Autonomous Runtime ACTIVE — Proactive Monitor Started!");
+    } catch (e) {
+        console.warn("🟡 ElizaOS Runtime not compiled yet. Falling back to legacy pipeline.", e.message);
+    }
+})();
 
 // ── Config ────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
