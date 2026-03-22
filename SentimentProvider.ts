@@ -1,6 +1,6 @@
 import { Provider, IAgentRuntime, Memory, State } from "@elizaos/core";
 import path from "path";
-const SentimentAnalysisAgent = require(path.resolve(__dirname, "..", "SentimentAnalysisAgent"));
+const SentimentAnalysisAgent = require(path.resolve(process.cwd(), "SentimentAnalysisAgent"));
 
 export const sentimentProvider: Provider = {
     name: "SENTIMENT_PROVIDER",

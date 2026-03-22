@@ -168,12 +168,12 @@ export class OpenConvAIClient {
         // Run the full pipeline
         try {
             const path = require("path");
-            const TokenScanner = require(path.resolve(__dirname, '..', "./TokenScannerAgent"));
-            const SentimentAgent = require(path.resolve(__dirname, '..', "./SentimentAnalysisAgent"));
-            const BlockchainRiskAgent = require(path.resolve(__dirname, '..', "./BlockchainRiskAnalysisAgent"));
-            const RiskScoring = require(path.resolve(__dirname, '..', "./RiskScoringAgent"));
-            const RugPredictor = require(path.resolve(__dirname, '..', "./RugPredictorAgent"));
-            const AlertEngine = require(path.resolve(__dirname, '..', "./AlertAgent"));
+            const TokenScanner = require(path.resolve(process.cwd(), "./TokenScannerAgent"));
+            const SentimentAgent = require(path.resolve(process.cwd(), "./SentimentAnalysisAgent"));
+            const BlockchainRiskAgent = require(path.resolve(process.cwd(), "./BlockchainRiskAnalysisAgent"));
+            const RiskScoring = require(path.resolve(process.cwd(), "./RiskScoringAgent"));
+            const RugPredictor = require(path.resolve(process.cwd(), "./RugPredictorAgent"));
+            const AlertEngine = require(path.resolve(process.cwd(), "./AlertAgent"));
 
             const scanner = new TokenScanner();
             const scannerData = await scanner.scan(tokenId);

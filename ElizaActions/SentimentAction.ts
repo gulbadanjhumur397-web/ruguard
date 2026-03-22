@@ -1,6 +1,6 @@
 import { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
 import path from "path";
-const SentimentAnalysisAgent = require(path.resolve(__dirname, "..", "..", "SentimentAnalysisAgent"));
+const SentimentAnalysisAgent = require(path.resolve(process.cwd(), "SentimentAnalysisAgent"));
 import { ToolDataCache } from "./SharedCache";
 
 export const sentimentAction: Action = {

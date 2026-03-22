@@ -1,6 +1,6 @@
 import { Provider, IAgentRuntime, Memory, State } from "@elizaos/core";
 import path from "path";
-const TokenScannerAgent = require(path.resolve(__dirname, "..", "TokenScannerAgent"));
+const TokenScannerAgent = require(path.resolve(process.cwd(), "TokenScannerAgent"));
 
 export const tokenScannerProvider: Provider = {
     name: "TOKEN_SCANNER_PROVIDER",

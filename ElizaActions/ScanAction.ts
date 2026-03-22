@@ -1,7 +1,7 @@
 import { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
 import path from "path";
-const TokenScannerAgent = require(path.resolve(__dirname, "..", "..", "TokenScannerAgent"));
-const BlockchainRiskAnalysisAgent = require(path.resolve(__dirname, "..", "..", "BlockchainRiskAnalysisAgent"));
+const TokenScannerAgent = require(path.resolve(process.cwd(), "TokenScannerAgent"));
+const BlockchainRiskAnalysisAgent = require(path.resolve(process.cwd(), "BlockchainRiskAnalysisAgent"));
 import { ToolDataCache } from "./SharedCache";
 
 export const scanTokenAction: Action = {

@@ -1,8 +1,8 @@
 import { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
 import path from "path";
-const RiskScoringAgent = require(path.resolve(__dirname, "..", "..", "RiskScoringAgent"));
-const RugPredictorAgent = require(path.resolve(__dirname, "..", "..", "RugPredictorAgent"));
-const AlertAgent = require(path.resolve(__dirname, "..", "..", "AlertAgent"));
+const RiskScoringAgent = require(path.resolve(process.cwd(), "RiskScoringAgent"));
+const RugPredictorAgent = require(path.resolve(process.cwd(), "RugPredictorAgent"));
+const AlertAgent = require(path.resolve(process.cwd(), "AlertAgent"));
 import { OpenConvAIClient } from "../openconvai-client";
 import { ToolDataCache } from "./SharedCache";
 
