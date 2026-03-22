@@ -256,10 +256,7 @@ export class OpenConvAIClient {
         }
         
         try {
-            await this.hcsClient.sendMessage({
-                TopicID: replyTopicId,
-                Message: JSON.stringify(payload)
-            });
+            await this.hcsClient.sendMessage(replyTopicId, JSON.stringify(payload));
         } catch (error: any) {
             this.runtime.logger.error(`[OpenConvAI] Reply publish error: ${error.message}`);
         }
@@ -286,13 +283,10 @@ export class OpenConvAIClient {
         this.runtime.logger.warn(`[OpenConvAI] 🚨 -> Payload: ${alertPayload}`);
 
         try {
-            await this.hcsClient.sendMessage({
-                TopicID: this.globalSirenTopicId,
-                Message: alertPayload
-            });
+            await this.hcsClient.sendMessage(this.globalSirenTopicId, alertPayload);
             this.runtime.logger.warn(`[OpenConvAI] 🚨 ALERT SUCCESSFULLY PUBLISHED TO HCS NETWORK TOPIC ${this.globalSirenTopicId}`);
         } catch (error: any) {
-            this.runtime.logger.error(`[OpenConvAI] Broadcast Error (simulated success for demo): ${error.message}`);
+            this.runtime.logger.error(`[OpenConvAI] Broadcast Error: ${error.message}`);
         }
     }
 }
