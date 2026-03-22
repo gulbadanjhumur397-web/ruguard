@@ -25,8 +25,9 @@ export class OpenConvAIClient {
         }
 
         try {
-            const { HCS10Client } = require("@hashgraphonline/standards-sdk");
-            const { InboundTopicType } = require("@hashgraphonline/standards-sdk");
+            const sdk = await import("@hashgraphonline/standards-sdk");
+            const { HCS10Client } = sdk;
+            const { InboundTopicType } = sdk;
 
             this.hcsClient = new HCS10Client({
                 network: "testnet",
