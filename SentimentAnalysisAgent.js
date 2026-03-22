@@ -271,6 +271,7 @@ class SentimentAnalysisAgent {
 
       let liquidity_usd = parseFloat(tokenAttrs.total_reserve_in_usd || "0") * 2; // Fallback estimate
       const market_cap_usd = parseFloat(tokenAttrs.market_cap_usd || "0");
+      const current_price = parseFloat(tokenAttrs.price_usd || "0");
 
       // Step 2: Fetch pool-level data for accurate liquidity, volume & transactions
       let volume_24h = 0;
@@ -312,6 +313,7 @@ class SentimentAnalysisAgent {
           liquidity_usd,
           volume_24h,
           market_cap_usd,
+          current_price,
           transactions_24h,
           dex_risk_level
       };
@@ -650,8 +652,8 @@ Max 3 short sentences.
                 competitor_analysis: "N/A"
             },
             financial: {
-                current_price: externalData.coingecko.current_price || 0,
-                market_cap: externalData.coingecko.market_cap || 0,
+                current_price: externalData.dex.current_price || externalData.coingecko.current_price || 0,
+                market_cap: externalData.dex.market_cap_usd || externalData.coingecko.market_cap || 0,
                 fdv: externalData.coingecko.fully_diluted_valuation || 0,
                 circulating_supply: externalData.coingecko.circulating_supply || 0,
                 total_supply: externalData.coingecko.total_supply || 0,
