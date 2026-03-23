@@ -197,18 +197,18 @@ Current time: ${new Date().toISOString()}
 
 Generate an operational plan for the next hour. Output ONLY a JSON array of task strings.
 Each task should be a specific, executable action.
+You have FULL AUTONOMY. There are NO restrictions on what you can plan.
 
-Rules:
-- If market mood is "Extreme Fear" or "Fear": include more aggressive scanning tasks and lower risk thresholds
-- If market mood is "Extreme Greed" or "Greed": include scam-hunting tasks since euphoria attracts rug pulls
-- Always include EXACTLY ONE task that says: "Scan latest real Hedera tokens" (this triggers real Mirror Node scanning)
-- Do NOT include multiple scanning tasks — one scan per plan is enough
-- Always include at least one monitoring task and one reporting task
-- Include 3-5 tasks maximum
-- Tasks should be realistic actions like scanning tokens, checking watchlists, generating reports
+Guidelines:
+- If market mood is "Extreme Fear" or "Fear": be hyper-aggressive — scan more tokens, lower alert thresholds, hunt for rug pulls
+- If market mood is "Extreme Greed" or "Greed": euphoria attracts scams — hunt aggressively for pump-and-dump schemes
+- Include ONE scanning task: "Scan latest real Hedera tokens"
+- You decide how many tasks to include (minimum 2, no maximum)
+- You decide what types of tasks to create — scanning, monitoring, reporting, alerting, watchlist updates, sentiment analysis, etc.
+- Be creative and adaptive — your plans should evolve based on conditions
 
 Example output:
-["Scan latest real Hedera tokens", "Check if any watchlist tokens have changed risk level", "Generate a security status report"]` },
+["Scan latest real Hedera tokens", "Analyze market conditions for emerging threats", "Generate threat intelligence report"]` },
                     { role: "user", content: "Create your operational plan for this hour." }
                 ],
                 temperature: 0.7,
@@ -266,7 +266,10 @@ Example output:
                 } else {
                     // Fetch the latest tokens from Hedera, using timestamp cursor to avoid re-scanning
                     try {
-                        let mirrorUrl = "https://mainnet-public.mirrornode.hedera.com/api/v1/tokens?limit=10&order=desc";
+                        let mirrorUrl = "https://mainnet-public.mirrornode.hedera.com/api/v1/tokens?order=desc";
+                        // Dynamic scan count: more aggressive in fear markets
+                        const scanLimit = this.marketMood.value < 25 ? 15 : this.marketMood.value < 50 ? 10 : 5;
+                        mirrorUrl += `&limit=${scanLimit}`;
                         if (this.lastTokenTimestamp) {
                             mirrorUrl += `&timestamp=lt:${this.lastTokenTimestamp}`;
                         }
@@ -331,8 +334,10 @@ Example output:
                                 }
                             }
 
-                            // AUTONOMOUS ALERT: If high risk AND not already alerted, broadcast a warning
-                            if (riskScore > 75 && !this.alertedTokens.has(tokenId)) {
+                            // AUTONOMOUS ALERT: Dynamic threshold based on market mood
+                            // Extreme Fear → alert at score > 50 | Neutral → alert at > 65 | Greed → alert at > 75
+                            const alertThreshold = this.marketMood.value < 25 ? 50 : this.marketMood.value < 50 ? 60 : 70;
+                            if (riskScore > alertThreshold && !this.alertedTokens.has(tokenId)) {
                                 this.alertedTokens.add(tokenId);
                                 this.runtime.logger.warn(`   🚨 HIGH RISK DETECTED: ${scannerData.name} (${tokenId})! Broadcasting alert...`);
                                 if (this.openConvAI) {
