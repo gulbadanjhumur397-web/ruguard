@@ -744,6 +744,11 @@ Be precise and data-driven.`;
     const projectDesc = externalData.coingecko.project_description || "Unknown";
     const whitepaper = externalData.coingecko.whitepaper_link || "None";
 
+    const redditData = externalData.reddit || {};
+    const redditSentimentStr = (redditData.reddit_data_available)
+        ? `[Reddit Social Buzz: ${redditData.reddit_social_buzz}/1.0 | Trust: ${redditData.reddit_dev_trust}/1.0 | Rug Risk: ${redditData.reddit_rug_risk}/1.0 | Allegations: ${redditData.reddit_allegations?.length ? redditData.reddit_allegations.map(a => a.type).join(', ') : 'None'}]`
+        : `[Reddit Data: None available]`;
+
     const aiPrompt = `
 Analyze this token market sentiment based on the following metrics:
 
@@ -754,13 +759,14 @@ Liquidity USD: $${liquidity}
 NVT Ratio: ${nvtRatio}
 CoinGecko Community Votes (Bullish): ${bullishPercent}%
 CoinGecko Community Votes (Bearish): ${bearishPercent}%
+Reddit Intelligence: ${redditSentimentStr}
 DEX risk level: ${dexRisk}
 Community risk index: ${communityRisk}
 
 Explain:
-1. Overall sentiment condition (explicitly credit CoinGecko if using their votes. If votes are 0%, state lack of community data).
+1. Overall sentiment condition (incorporate Reddit social buzz and CoinGecko votes).
 2. Fundamental market strength (using Cap, Liquidity, and NVT).
-3. Possible rug concerns.
+3. Possible rug concerns (mention any Reddit scam allegations if present, otherwise rely on DEX risk).
 
 Max 3 short sentences.
 `;
