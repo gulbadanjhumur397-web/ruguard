@@ -407,6 +407,8 @@ class SentimentAnalysisAgent {
     const query = searchTerms.map(t => t.includes(' ') ? `"${t}"` : t).join(" OR ");
 
     const allPosts = [];
+    console.log(`[Reddit] Query: ${query}`);
+    console.log(`[Reddit] Searching ${subreddits.length} subreddits...`);
 
     for (const sub of subreddits) {
       try {
@@ -415,7 +417,10 @@ class SentimentAnalysisAgent {
           headers: { "User-Agent": "RugGuard-SecurityBot/1.0" }
         }, 8000);
 
-        if (!response.ok) continue;
+        if (!response.ok) {
+          console.log(`[Reddit] r/${sub.name}: HTTP ${response.status} - skipped`);
+          continue;
+        }
 
         const data = await response.json();
         const posts = data?.data?.children || [];
@@ -449,10 +454,11 @@ class SentimentAnalysisAgent {
           });
         }
       } catch (err) {
-        // Subreddit fetch failed — skip silently
+        console.log(`[Reddit] r/${sub.name}: ERROR - ${err.message}`);
         continue;
       }
     }
+    console.log(`[Reddit] Total relevant posts found: ${allPosts.length}`);
     // Keep only top 15 posts by weight for LLM analysis
     allPosts.sort((a, b) => b.weight - a.weight);
     const topPosts = allPosts.slice(0, 15);
