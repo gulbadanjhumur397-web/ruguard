@@ -8,6 +8,8 @@ class SentimentAnalysisAgent {
     // Cache structure: cache[token_symbol] = { timestamp: number, data: Object }
     this.cache = {};
     this.CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes
+    // Reddit post dedup cache — skip already-analyzed posts across runs
+    this.redditPostCache = new Set();
   }
 
   /**
@@ -373,9 +375,169 @@ class SentimentAnalysisAgent {
   }
 
   /**
-   * 4. Sentiment Fusion Layer - Hybrid Scoring
+   * 4. Reddit Free JSON Endpoint — Social Intelligence Layer
+   * Searches 6 subreddits with tiered reliability weights.
+   * Returns relevant posts for LLM semantic analysis.
    */
-  calculateCommunityIntelligence({ local_sentiment_score, cg_score, dex_score, gh_score }) {
+  async fetchRedditSentiment(name, symbol, tokenId) {
+    const subreddits = [
+      // Tier 1 — General market sentiment
+      { name: "CryptoCurrency", weight: 1.0 },
+      { name: "CryptoMarkets", weight: 1.0 },
+      // Tier 2 — Early hype & high rug probability
+      { name: "CryptoMoonShots", weight: 0.6 },
+      { name: "SatoshiStreetBets", weight: 0.6 },
+      // Tier 3 — Scam reporting (highest reliability)
+      { name: "CryptoScams", weight: 1.4 },
+    ];
+
+    const searchTerms = [name, symbol, `$${symbol}`];
+    if (tokenId) searchTerms.push(tokenId);
+    const query = searchTerms.join("+OR+");
+
+    const allPosts = [];
+
+    for (const sub of subreddits) {
+      try {
+        const url = `https://www.reddit.com/r/${sub.name}/search.json?q=${encodeURIComponent(query)}&sort=new&restrict_sr=on&limit=10&t=week`;
+        const response = await this._fetchWithTimeout(url, {
+          headers: { "User-Agent": "RugGuard-SecurityBot/1.0" }
+        }, 8000);
+
+        if (!response.ok) continue;
+
+        const data = await response.json();
+        const posts = data?.data?.children || [];
+
+        for (const post of posts) {
+          const p = post.data;
+          if (!p || !p.id) continue;
+          // Skip already-analyzed posts
+          if (this.redditPostCache.has(p.id)) continue;
+          this.redditPostCache.add(p.id);
+
+          // Relevance filter: must contain token name, symbol, or ID
+          const text = `${p.title || ""} ${p.selftext || ""}`.toLowerCase();
+          const isRelevant = searchTerms.some(term => text.includes(term.toLowerCase()));
+          if (!isRelevant) continue;
+
+          const ageHours = (Date.now() / 1000 - (p.created_utc || 0)) / 3600;
+          const weight = this._calculateRedditWeight(p.score || 0, sub.weight, ageHours);
+
+          allPosts.push({
+            id: p.id,
+            subreddit: sub.name,
+            subreddit_weight: sub.weight,
+            title: (p.title || "").substring(0, 200),
+            body: (p.selftext || "").substring(0, 300),
+            upvotes: p.score || 0,
+            num_comments: p.num_comments || 0,
+            created_utc: p.created_utc || 0,
+            age_hours: Math.round(ageHours),
+            weight
+          });
+        }
+      } catch (err) {
+        // Subreddit fetch failed — skip silently
+        continue;
+      }
+    }
+
+    // Keep only top 15 posts by weight for LLM analysis
+    allPosts.sort((a, b) => b.weight - a.weight);
+    const topPosts = allPosts.slice(0, 15);
+
+    // If no posts found, return minimal result
+    if (topPosts.length === 0) {
+      return {
+        reddit_data_available: false,
+        reddit_mentions: 0,
+        reddit_sentiment: 0,
+        rug_discussion_density: 0,
+        dev_trust_score: 0.5,
+        social_buzz: 0,
+        allegations: []
+      };
+    }
+
+    // Run batched LLM semantic analysis
+    const analysis = await this._analyzeRedditWithLLM(topPosts, name, symbol);
+
+    return {
+      reddit_data_available: true,
+      reddit_mentions: allPosts.length,
+      ...analysis
+    };
+  }
+
+  /**
+   * Batched LLM Semantic Analysis for Reddit Posts
+   * Sends up to 15 posts in ONE GPT-4o-mini call to minimize cost.
+   */
+  async _analyzeRedditWithLLM(posts, tokenName, tokenSymbol) {
+    try {
+      const postSummaries = posts.map((p, i) => 
+        `[${i+1}] r/${p.subreddit} | ↑${p.upvotes} | ${p.age_hours}h ago\nTitle: ${p.title}\nBody: ${p.body.substring(0, 150)}`
+      ).join("\n\n");
+
+      const prompt = `You are a blockchain security analyst. Analyze these Reddit posts about "${tokenName}" ($${tokenSymbol}).
+
+${postSummaries}
+
+Return ONLY a JSON object with:
+{
+  "community_sentiment": -1.0 to 1.0 (overall mood),
+  "rug_risk": 0.0 to 1.0 (how likely a rug pull based on discussion),
+  "dev_trust": 0.0 to 1.0 (community trust in developers),
+  "social_buzz": 0.0 to 1.0 (volume and intensity of discussion),
+  "rug_discussion_density": 0.0 to 1.0 (how much rug/scam talk exists),
+  "allegations": [{"type": "dev_dump|liquidity_unlock|scam_accusation|none", "confidence": 0.0 to 1.0}]
+}
+
+If posts are mostly positive, rug_risk should be low. If posts warn about scams, rug_risk should be high.
+Be precise and data-driven.`;
+
+      const result = await askLLM(prompt);
+      const jsonMatch = result.match(/\{[\s\S]*\}/); 
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          reddit_sentiment: parsed.community_sentiment || 0,
+          rug_risk: parsed.rug_risk || 0,
+          dev_trust_score: parsed.dev_trust || 0.5,
+          social_buzz: parsed.social_buzz || 0,
+          rug_discussion_density: parsed.rug_discussion_density || 0,
+          allegations: parsed.allegations || []
+        };
+      }
+    } catch (err) {
+      // LLM analysis failed — return neutral defaults
+    }
+
+    return {
+      reddit_sentiment: 0,
+      rug_risk: 0,
+      dev_trust_score: 0.5,
+      social_buzz: 0,
+      rug_discussion_density: 0,
+      allegations: []
+    };
+  }
+
+  /**
+   * Reddit Post Weight Calculator
+   * weight = log(upvotes+1) × subreddit_reliability × time_decay
+   */
+  _calculateRedditWeight(upvotes, subredditWeight, ageHours) {
+    const upvoteScore = Math.log(Math.abs(upvotes) + 1);
+    const timeDecay = Math.exp(-0.1 * ageHours); // Fresh posts matter more
+    return upvoteScore * subredditWeight * timeDecay;
+  }
+
+  /**
+   * 5. Sentiment Fusion Layer - Hybrid Scoring (Updated with Reddit)
+   */
+  calculateCommunityIntelligence({ local_sentiment_score, cg_score, dex_score, gh_score, reddit_score }) {
       // Normalizing to 100 pt scales
       // local_sentiment_score bounds roughly 0-100
       // cg_score logic: coingecko community score typically 0-100
@@ -388,11 +550,21 @@ class SentimentAnalysisAgent {
       let mapped_gh_score = 50;
       if (gh_score === "LOW") mapped_gh_score = 100;
       else if (gh_score === "HIGH RISK") mapped_gh_score = 10;
+
+      // Reddit logic: convert sentiment(-1 to 1) and rug_risk(0 to 1) to 0-100 score
+      let mapped_reddit_score = 50; // neutral default
+      if (reddit_score && reddit_score.reddit_data_available) {
+          const sentimentComponent = ((reddit_score.reddit_sentiment || 0) + 1) * 50; // -1→0, 0→50, 1→100
+          const riskComponent = (1 - (reddit_score.rug_risk || 0)) * 100; // 0 risk→100, 1 risk→0
+          mapped_reddit_score = (sentimentComponent * 0.4) + (riskComponent * 0.6);
+      }
       
-      const score = (local_sentiment_score * 0.3) + 
-                    (cg_score * 0.25) + 
+      // 5-source fusion: local(20%) + CoinGecko(20%) + DEX(25%) + GitHub(15%) + Reddit(20%)
+      const score = (local_sentiment_score * 0.20) + 
+                    (cg_score * 0.20) + 
                     (mapped_dex_score * 0.25) + 
-                    (mapped_gh_score * 0.20);
+                    (mapped_gh_score * 0.15) +
+                    (mapped_reddit_score * 0.20);
                     
       return Math.floor(Math.max(0, Math.min(100, score)));
   }
@@ -448,6 +620,7 @@ class SentimentAnalysisAgent {
             coingecko: {},
             dex: {},
             github: {},
+            reddit: {},
             sources: []
         };
         
@@ -472,6 +645,12 @@ class SentimentAnalysisAgent {
                 externalData.sources.push("github");
             }
         }
+
+        // Fetch Reddit social intelligence
+        console.log(`Fetching Reddit social intelligence...`);
+        const redditData = await this.fetchRedditSentiment(name, symbol, token_id);
+        externalData.reddit = redditData || {};
+        if (redditData?.reddit_data_available) externalData.sources.push("reddit");
         
         // Cache the result
         this.cache[symbol] = {
@@ -524,7 +703,8 @@ class SentimentAnalysisAgent {
         local_sentiment_score: riskMetrics.community_trust_score,
         cg_score: externalData.coingecko.coingecko_community_score || 0,
         dex_score: preferred_dex_score,
-        gh_score: externalData.github.developer_activity_risk || riskMetrics.developer_trust_risk // Fallback to local NLP
+        gh_score: externalData.github.developer_activity_risk || riskMetrics.developer_trust_risk,
+        reddit_score: externalData.reddit || {}
     });
 
     let external_risk_rating = "HIGH";
@@ -687,7 +867,17 @@ Max 3 short sentences.
         // AI-enhanced fields
         ai_sentiment_summary: sentimentSummary,
         ai_market_confidence,
-        data_quality_note: "AI enhanced sentiment analysis"
+        data_quality_note: "AI enhanced sentiment analysis with Reddit social intelligence",
+
+        // Reddit Social Intelligence (Level 4 upgrade)
+        reddit_data_available: externalData.reddit?.reddit_data_available || false,
+        reddit_mentions: externalData.reddit?.reddit_mentions || 0,
+        reddit_sentiment: externalData.reddit?.reddit_sentiment || 0,
+        rug_discussion_density: externalData.reddit?.rug_discussion_density || 0,
+        reddit_social_buzz: externalData.reddit?.social_buzz || 0,
+        reddit_dev_trust: externalData.reddit?.dev_trust_score || 0.5,
+        reddit_rug_risk: externalData.reddit?.rug_risk || 0,
+        reddit_allegations: externalData.reddit?.allegations || []
     };
   }
 }
