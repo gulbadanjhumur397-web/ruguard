@@ -118,12 +118,22 @@ class ConversationalAgent {
     // ── Token ID Extraction ───────────────────────────────────────
     /**
      * Extract a Hedera token ID (0.0.XXXXXX) from the user's message.
+     * Automatically converts Hedera EVM addresses to 0.0.X format.
      * @param {string} message
      * @returns {string|null} Token ID or null
      */
     extractTokenId(message) {
-        const match = message.match(/\b(0\.0\.\d+)\b/);
-        return match ? match[1] : null;
+        const standardMatch = message.match(/\b(0\.0\.\d+)\b/);
+        if (standardMatch) return standardMatch[1];
+        
+        const evmMatch = message.match(/0x[a-fA-F0-9]{40}\b/);
+        if (evmMatch) {
+            const hexStr = evmMatch[0].replace('0x', '');
+            const entityNum = parseInt(hexStr, 16);
+            return `0.0.${entityNum}`;
+        }
+        
+        return null;
     }
 
     /**
@@ -132,8 +142,16 @@ class ConversationalAgent {
      * @returns {string[]} Array of unique token IDs
      */
     extractAllTokenIds(message) {
-        const matches = message.match(/\b0\.0\.\d+\b/g);
-        return matches ? [...new Set(matches)] : [];
+        let matches = message.match(/\b0\.0\.\d+\b/g) || [];
+        
+        const evmMatches = message.match(/0x[a-fA-F0-9]{40}\b/g) || [];
+        evmMatches.forEach(evm => {
+            const hexStr = evm.replace('0x', '');
+            const entityNum = parseInt(hexStr, 16);
+            matches.push(`0.0.${entityNum}`);
+        });
+
+        return [...new Set(matches)];
     }
 
     /**
