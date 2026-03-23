@@ -290,12 +290,14 @@ export class OpenConvAIClient {
             const { TopicMessageSubmitTransaction, Client, PrivateKey } = await import("@hashgraph/sdk");
             const client = Client.forTestnet();
             
-            // Try multiple key formats: ED25519 raw hex, DER, then generic
+            // Try multiple key formats: ECDSA (0x-prefixed), ED25519, DER, then generic
             let privateKey;
             const pkStr = process.env.HEDERA_PRIVATE_KEY!;
-            try { privateKey = PrivateKey.fromStringED25519(pkStr); } catch {
-                try { privateKey = PrivateKey.fromStringDer(pkStr); } catch {
-                    privateKey = PrivateKey.fromString(pkStr);
+            try { privateKey = PrivateKey.fromStringECDSA(pkStr); } catch {
+                try { privateKey = PrivateKey.fromStringED25519(pkStr); } catch {
+                    try { privateKey = PrivateKey.fromStringDer(pkStr); } catch {
+                        privateKey = PrivateKey.fromString(pkStr);
+                    }
                 }
             }
             client.setOperator(process.env.HEDERA_ACCOUNT_ID!, privateKey);
