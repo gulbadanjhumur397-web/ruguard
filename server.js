@@ -65,7 +65,7 @@ app.use(cors());
 app.use(express.json());
 
 // ── Serve Frontend ────────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "frontend/dist")));
 
 // ── Helper: Validate Hedera Token ID ──────────────────────────────
 function isValidTokenId(tokenId) {
@@ -650,6 +650,11 @@ app.post("/chat/stream", async (req, res) => {
     } finally {
         res.end();
     }
+});
+
+// ── React Frontend Fallback ───────────────────────────────────────
+app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "frontend/dist/index.html"));
 });
 
 // ── Global error handler ──────────────────────────────────────────
