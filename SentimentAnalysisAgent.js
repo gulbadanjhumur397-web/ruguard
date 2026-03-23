@@ -527,7 +527,7 @@ Be precise and data-driven.`;
         };
       }
     } catch (err) {
-      // LLM analysis failed — return neutral defaults
+      console.log(`[Reddit] LLM analysis failed: ${err.message}`);
     }
 
     return {
@@ -752,7 +752,7 @@ Be precise and data-driven.`;
 
     const redditData = externalData.reddit || {};
     const redditSentimentStr = (redditData.reddit_data_available)
-        ? `[Reddit Social Buzz: ${redditData.reddit_social_buzz}/1.0 | Trust: ${redditData.reddit_dev_trust}/1.0 | Rug Risk: ${redditData.reddit_rug_risk}/1.0 | Allegations: ${redditData.reddit_allegations?.length ? redditData.reddit_allegations.map(a => a.type).join(', ') : 'None'}]`
+        ? `[Reddit Social Buzz: ${redditData.social_buzz}/1.0 | Trust: ${redditData.dev_trust_score}/1.0 | Rug Risk: ${redditData.rug_risk}/1.0 | Allegations: ${redditData.allegations?.length ? redditData.allegations.map(a => a.type).join(', ') : 'None'}]`
         : `[Reddit Data: None available]`;
 
     const aiPrompt = `
