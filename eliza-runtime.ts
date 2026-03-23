@@ -967,12 +967,20 @@ WIRING AND ANTI-LOOP RULES:
                     overallSentiment: sd.overall_sentiment || sd.sentiment_label || "N/A",
                     score: sd.sentiment_score ?? sd.ai_sentiment_score ?? "N/A",
                     aiConfidence: sd.ai_confidence || "N/A",
-                    marketCap: sd.market_cap || "N/A",
+                    marketCap: sd.market_cap || sd.fundamental_data?.financial?.market_cap || "N/A",
                     volume24h: sd.volume_24h || "N/A",
                     priceChange24h: `${sd.price_change_24h || "0"}%`,
-                    dexLiquidity: sd.dex_liquidity || "N/A",
+                    dexLiquidity: sd.dex_liquidity || sd.liquidity_usd || "N/A",
                     socialMentions: sd.social_mentions || sd.social_score || "N/A",
-                    communityScore: sd.community_score || "N/A",
+                    communityIntelligenceScore: sd.community_intelligence_score || "N/A",
+                    sentimentSecurityRating: sd.sentiment_security_rating || "N/A",
+                    // Reddit Social Intelligence
+                    redditDataAvailable: sd.reddit_data_available || false,
+                    redditMentions: sd.reddit_mentions || 0,
+                    redditSocialBuzz: sd.reddit_social_buzz || 0,
+                    redditDevTrust: sd.reddit_dev_trust || 0.5,
+                    redditRugRisk: sd.reddit_rug_risk || 0,
+                    redditAllegations: sd.reddit_allegations || [],
                     aiSentimentSummary: sd.ai_sentiment_summary || sd.ai_analysis || "No AI analysis available."
                 }, null, 2);
                 history.push({ role: "assistant", content: report });
@@ -995,11 +1003,21 @@ WIRING AND ANTI-LOOP RULES:
                 overallSentiment: sentimentData.overall_sentiment || sentimentData.sentiment_label || "N/A",
                 score: sentimentData.sentiment_score ?? sentimentData.ai_sentiment_score ?? "N/A",
                 aiConfidence: sentimentData.ai_confidence || "N/A",
-                marketCap: sentimentData.market_cap || "N/A",
+                marketCap: sentimentData.market_cap || sentimentData.fundamental_data?.financial?.market_cap || "N/A",
                 volume24h: sentimentData.volume_24h || "N/A",
                 priceChange24h: `${sentimentData.price_change_24h || "0"}%`,
-                dexLiquidity: sentimentData.dex_liquidity || "N/A",
+                dexLiquidity: sentimentData.dex_liquidity || sentimentData.liquidity_usd || "N/A",
                 socialMentions: sentimentData.social_mentions || sentimentData.social_score || "N/A",
+                communityIntelligenceScore: sentimentData.community_intelligence_score || "N/A",
+                sentimentSecurityRating: sentimentData.sentiment_security_rating || "N/A",
+                // Reddit Social Intelligence
+                redditDataAvailable: sentimentData.reddit_data_available || false,
+                redditMentions: sentimentData.reddit_mentions || 0,
+                redditSocialBuzz: sentimentData.reddit_social_buzz || 0,
+                redditDevTrust: sentimentData.reddit_dev_trust || 0.5,
+                redditRugRisk: sentimentData.reddit_rug_risk || 0,
+                redditAllegations: sentimentData.reddit_allegations || [],
+                // AI Summary (includes Reddit insights)
                 aiSentimentSummary: sentimentData.ai_sentiment_summary || sentimentData.ai_analysis || "No AI analysis available."
             }, null, 2);
 

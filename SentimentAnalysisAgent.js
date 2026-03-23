@@ -774,7 +774,7 @@ Be precise and data-driven.`;
         ? `[Reddit Social Buzz: ${redditData.social_buzz}/1.0 | Trust: ${redditData.dev_trust_score}/1.0 | Rug Risk: ${redditData.rug_risk}/1.0 | Allegations: ${redditData.allegations?.length ? redditData.allegations.map(a => a.type).join(', ') : 'None'}]`
         : `[Reddit Data: None available]`;
 
-    const aiPrompt = `
+const aiPrompt = `
 Analyze this token market sentiment based on the following metrics:
 
 Token: ${tokenName}
@@ -788,12 +788,12 @@ Reddit Intelligence: ${redditSentimentStr}
 DEX risk level: ${dexRisk}
 Community risk index: ${communityRisk}
 
-Explain:
-1. Overall sentiment condition (incorporate Reddit social buzz and CoinGecko votes).
-2. Fundamental market strength (using Cap, Liquidity, and NVT).
-3. Possible rug concerns (mention any Reddit scam allegations if present, otherwise rely on DEX risk).
+You MUST return your response in ONLY this EXACT format using these specific emojis and bullet points:
+🗣️ **Community Sentiment:** [1 short sentence integrating Reddit social buzz and CoinGecko votes]
+📊 **Fundamentals:** [1 short sentence on Cap, Liquidity, and NVT]
+🚨 **Social Alerts:** [Explicitly mention Reddit scam allegations if present, otherwise say "No scam allegations detected"]
 
-Max 3 short sentences.
+DO NOT wrap the response in markdown blocks or add extra introductory text.
 `;
 
     let sentimentSummary;
