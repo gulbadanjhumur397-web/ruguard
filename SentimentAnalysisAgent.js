@@ -381,9 +381,9 @@ class SentimentAnalysisAgent {
    */
   async fetchRedditSentiment(name, symbol, tokenId) {
     const subreddits = [
-      // Tier 1 — General market sentiment
+      // Tier 1 — General market sentiment & Chain Community
+      { name: "Hedera", weight: 1.2 },
       { name: "CryptoCurrency", weight: 1.0 },
-      { name: "CryptoMarkets", weight: 1.0 },
       // Tier 2 — Early hype & high rug probability
       { name: "CryptoMoonShots", weight: 0.6 },
       { name: "SatoshiStreetBets", weight: 0.6 },
@@ -391,15 +391,26 @@ class SentimentAnalysisAgent {
       { name: "CryptoScams", weight: 1.4 },
     ];
 
-    const searchTerms = [name, symbol, `$${symbol}`];
-    if (tokenId) searchTerms.push(tokenId);
-    const query = searchTerms.join("+OR+");
+    const terms = new Set([name, symbol, `$${symbol}`]);
+    if (tokenId) terms.add(tokenId);
+    
+    // Add spaced variation for CamelCase names (e.g. SaucerSwap -> Saucer Swap)
+    const spacedName = name.replace(/([A-Z])/g, ' $1').trim();
+    if (spacedName !== name && spacedName.length > 3) terms.add(spacedName);
+    
+    // Add stripped variation (e.g. Saucer Swap -> Saucerswap)
+    const strippedName = name.replace(/\s+/g, '');
+    if (strippedName !== name) terms.add(strippedName);
+
+    const searchTerms = Array.from(terms);
+    // Join with OR, wrap in quotes for exact phrases
+    const query = searchTerms.map(t => t.includes(' ') ? `"${t}"` : t).join(" OR ");
 
     const allPosts = [];
 
     for (const sub of subreddits) {
       try {
-        const url = `https://www.reddit.com/r/${sub.name}/search.json?q=${encodeURIComponent(query)}&sort=new&restrict_sr=on&limit=10&t=week`;
+        const url = `https://www.reddit.com/r/${sub.name}/search.json?q=${encodeURIComponent(query)}&sort=new&restrict_sr=on&limit=20&t=all`;
         const response = await this._fetchWithTimeout(url, {
           headers: { "User-Agent": "RugGuard-SecurityBot/1.0" }
         }, 8000);
@@ -442,13 +453,12 @@ class SentimentAnalysisAgent {
         continue;
       }
     }
-
     // Keep only top 15 posts by weight for LLM analysis
     allPosts.sort((a, b) => b.weight - a.weight);
     const topPosts = allPosts.slice(0, 15);
 
-    // If no posts found, return minimal result
-    if (topPosts.length === 0) {
+    // If no posts found across all subreddits, fall back to default empty state
+    if (allPosts.length === 0) {
       return {
         reddit_data_available: false,
         reddit_mentions: 0,
