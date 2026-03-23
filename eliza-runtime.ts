@@ -36,6 +36,11 @@ export class RugGuardElizaRuntime {
     private userPreferences = new Map<string, { preferredRiskLevel?: string, watchlist?: string[], lastSeen?: string }>();
     // Cache of explicitly safe tokens discovered by the background scanner
     private safeTokenCache: { tokenId: string, name: string, symbol: string, riskScore: number, addedAt: string }[] = [];
+    // Deduplication: track already-scanned and already-alerted tokens to prevent spam
+    private scannedTokens = new Set<string>();
+    private alertedTokens = new Set<string>();
+    // Timestamp cursor for Mirror Node pagination — ensures we always fetch NEW tokens
+    private lastTokenTimestamp: string | null = null;
     // Agent's autonomous goals — persisted across restarts
     private agentGoals: { mission: string, currentFocus: string, dailyObjectives: string[], lastUpdated: string } = {
         mission: "Protect Hedera users from rug pulls and scam tokens by providing autonomous, real-time security intelligence.",
@@ -252,13 +257,24 @@ Example output:
                 if (tokenMatch) {
                     tokensToScan = [tokenMatch[0]];
                 } else {
-                    // Fetch the 5 most recently created tokens from Hedera
+                    // Fetch the latest tokens from Hedera, using timestamp cursor to avoid re-scanning
                     try {
-                        const mirrorResponse = await fetch("https://mainnet-public.mirrornode.hedera.com/api/v1/tokens?limit=5&order=desc");
+                        let mirrorUrl = "https://mainnet-public.mirrornode.hedera.com/api/v1/tokens?limit=10&order=desc";
+                        if (this.lastTokenTimestamp) {
+                            mirrorUrl += `&timestamp=lt:${this.lastTokenTimestamp}`;
+                        }
+                        const mirrorResponse = await fetch(mirrorUrl);
                         if (mirrorResponse.ok) {
                             const mirrorData = await mirrorResponse.json() as any;
-                            tokensToScan = (mirrorData.tokens || []).map((t: any) => t.token_id).slice(0, 5);
-                            this.runtime.logger.info(`   🔍 Fetched ${tokensToScan.length} real tokens from Hedera Mirror Node`);
+                            const allTokens = (mirrorData.tokens || []);
+                            // Filter out already-scanned tokens
+                            const newTokens = allTokens.filter((t: any) => !this.scannedTokens.has(t.token_id));
+                            tokensToScan = newTokens.map((t: any) => t.token_id).slice(0, 5);
+                            // Update timestamp cursor so next cycle fetches even newer tokens
+                            if (allTokens.length > 0 && allTokens[0].created_timestamp) {
+                                this.lastTokenTimestamp = allTokens[allTokens.length - 1].created_timestamp;
+                            }
+                            this.runtime.logger.info(`   🔍 Fetched ${tokensToScan.length} NEW tokens from Hedera Mirror Node (${this.scannedTokens.size} already scanned)`);
                         }
                     } catch {
                         // Fallback to a known token if Mirror Node fails
@@ -272,6 +288,10 @@ Example output:
                 const RiskScoringAgent = require(path.resolve(process.cwd(), "./RiskScoringAgent"));
                 
                 for (const tokenId of tokensToScan) {
+                    // Skip if already scanned in this session
+                    if (this.scannedTokens.has(tokenId)) continue;
+                    this.scannedTokens.add(tokenId);
+
                     try {
                         const scanner = new TokenScanner();
                         const scannerData = await scanner.scan(tokenId);
@@ -304,8 +324,9 @@ Example output:
                                 }
                             }
 
-                            // AUTONOMOUS ALERT: If high risk, broadcast a warning
-                            if (riskScore > 75) {
+                            // AUTONOMOUS ALERT: If high risk AND not already alerted, broadcast a warning
+                            if (riskScore > 75 && !this.alertedTokens.has(tokenId)) {
+                                this.alertedTokens.add(tokenId);
                                 this.runtime.logger.warn(`   🚨 HIGH RISK DETECTED: ${scannerData.name} (${tokenId})! Broadcasting alert...`);
                                 if (this.openConvAI) {
                                     await this.openConvAI.broadcastGlobalAlert(
