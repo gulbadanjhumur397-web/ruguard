@@ -201,9 +201,10 @@ Each task should be a specific, executable action.
 Rules:
 - If market mood is "Extreme Fear" or "Fear": include more aggressive scanning tasks and lower risk thresholds
 - If market mood is "Extreme Greed" or "Greed": include scam-hunting tasks since euphoria attracts rug pulls
-- Always include at least one task that says: "Scan latest real Hedera tokens" (this triggers real Mirror Node scanning)
+- Always include EXACTLY ONE task that says: "Scan latest real Hedera tokens" (this triggers real Mirror Node scanning)
+- Do NOT include multiple scanning tasks — one scan per plan is enough
 - Always include at least one monitoring task and one reporting task
-- Include 3-6 tasks maximum
+- Include 3-5 tasks maximum
 - Tasks should be realistic actions like scanning tokens, checking watchlists, generating reports
 
 Example output:
@@ -229,9 +230,15 @@ Example output:
             tasks.forEach((t: string, i: number) => this.runtime.logger.info(`   ${i + 1}. ${t}`));
             this.runtime.logger.info("═══════════════════════════════════════════════════");
 
-            // Execute each task autonomously
+            // Execute each task autonomously (with per-cycle scan guard)
+            let hasScannedThisCycle = false;
             for (const task of tasks) {
-                await this.executePlanTask(task);
+                await this.executePlanTask(task, hasScannedThisCycle);
+                // Check if this task triggered a scan
+                const taskLower = task.toLowerCase();
+                if (taskLower.includes("scan") || taskLower.includes("token")) {
+                    hasScannedThisCycle = true;
+                }
             }
 
             this.runtime.logger.info("🧠 [SELF-PLANNER] All planned tasks executed successfully.");
@@ -245,12 +252,12 @@ Example output:
     /**
      * Execute a single task from the AI's self-generated plan
      */
-    private async executePlanTask(task: string) {
+    private async executePlanTask(task: string, hasScannedThisCycle: boolean = false) {
         this.runtime.logger.info(`🤖 [EXECUTING] ${task}`);
         try {
             // Check if the task involves scanning tokens
             const tokenMatch = task.match(/0\.0\.\d+/);
-            if (tokenMatch || task.toLowerCase().includes("scan") || task.toLowerCase().includes("token")) {
+            if ((tokenMatch || task.toLowerCase().includes("scan") || task.toLowerCase().includes("token")) && !hasScannedThisCycle) {
                 // AUTONOMOUS ACTION: Fetch REAL latest tokens from the Hedera Mirror Node
                 let tokensToScan: string[] = [];
                 
