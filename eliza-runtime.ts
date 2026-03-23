@@ -41,6 +41,15 @@ export class RugGuardElizaRuntime {
     private alertedTokens = new Set<string>();
     // Timestamp cursor for Mirror Node pagination — ensures we always fetch NEW tokens
     private lastTokenTimestamp: string | null = null;
+    // ═══ LEVEL 4: SELF-LEARNING ═══
+    // Scan history — records every scan result for pattern learning
+    private scanHistory: { tokenId: string, name: string, riskScore: number, treasury: number, scannedAt: string }[] = [];
+    // Learned patterns — AI-derived insights from scan history, updated every 6 hours
+    private learnedPatterns: string[] = [];
+    // Learning stats
+    private learningStats: { totalScans: number, highRiskCount: number, safeCount: number, avgRiskScore: number, lastLearningRun: string } = {
+        totalScans: 0, highRiskCount: 0, safeCount: 0, avgRiskScore: 0, lastLearningRun: "never"
+    };
     // Agent's autonomous goals — persisted across restarts
     private agentGoals: { mission: string, currentFocus: string, dailyObjectives: string[], lastUpdated: string } = {
         mission: "Protect Hedera users from rug pulls and scam tokens by providing autonomous, real-time security intelligence.",
@@ -123,6 +132,11 @@ export class RugGuardElizaRuntime {
         setTimeout(() => this.selfPlanningEngine(), 10000); // First plan after 10s
         setInterval(() => this.selfPlanningEngine(), 3600000); // Then every hour
 
+        // LEVEL 4: Self-Learning Engine — analyze patterns every 6 hours
+        this.runtime.logger.info("🧬 [LEVEL 4] Self-Learning Engine initialized. Learning cycle every 6 hours.");
+        setTimeout(() => this.selfLearningEngine(), 60000); // First learning after 1 min
+        setInterval(() => this.selfLearningEngine(), 21600000); // Then every 6 hours
+
         // Dynamic Adaptation: Fetch market mood every 30 minutes
         this.fetchMarketMood();
         setInterval(() => this.fetchMarketMood(), 1800000);
@@ -194,6 +208,16 @@ Your current focus: ${this.agentGoals.currentFocus}
 Your daily objectives: ${this.agentGoals.dailyObjectives.join(", ")}
 Current market mood: ${this.marketMood.label} (Fear & Greed Index: ${this.marketMood.value}/100)
 Current time: ${new Date().toISOString()}
+
+=== LEVEL 4: LEARNED INTELLIGENCE ===
+Total tokens scanned in lifetime: ${this.learningStats.totalScans}
+High-risk tokens found: ${this.learningStats.highRiskCount} | Safe tokens found: ${this.learningStats.safeCount}
+Average risk score across all scans: ${this.learningStats.avgRiskScore.toFixed(1)}/100
+${this.learnedPatterns.length > 0 ? `
+PATTERNS YOU HAVE LEARNED FROM EXPERIENCE:
+${this.learnedPatterns.map((p, i) => `${i+1}. ${p}`).join("\n")}
+
+USE THESE PATTERNS to make smarter decisions about what to scan and how to prioritize.` : "No patterns learned yet. Keep scanning to build intelligence."}
 
 Generate an operational plan for the next hour. Output ONLY a JSON array of task strings.
 Each task should be a specific, executable action.
@@ -318,6 +342,20 @@ Example output:
                             this.runtime.logger.info(`   ✅ Scanned: ${scannerData.name} (${tokenId}) → Score: ${riskScore}/100`);
                             this.currentPlan.executedTasks.push(`Scanned ${scannerData.name} (${tokenId}) → Score: ${riskScore}/100`);
 
+                            // LEVEL 4: Record scan to history for pattern learning
+                            const treasuryPct = scannerData.treasury_percentage ?? 0;
+                            this.scanHistory.push({
+                                tokenId, name: scannerData.name, riskScore, treasury: treasuryPct,
+                                scannedAt: new Date().toISOString()
+                            });
+                            // Keep only last 200 entries to prevent memory bloat
+                            if (this.scanHistory.length > 200) this.scanHistory = this.scanHistory.slice(-200);
+                            // Update real-time learning stats
+                            this.learningStats.totalScans++;
+                            if (riskScore > 70) this.learningStats.highRiskCount++;
+                            if (riskScore < 30) this.learningStats.safeCount++;
+                            this.learningStats.avgRiskScore = this.scanHistory.reduce((sum, s) => sum + s.riskScore, 0) / this.scanHistory.length;
+
                             // AUTONOMOUS SCREENER CACHE: Save safe tokens!
                             if (riskScore < 30) {
                                 // Check if already cached
@@ -413,6 +451,17 @@ Example output:
                     this.runtime.logger.info(`🎯 [GOALS] Restored mission: ${this.agentGoals.mission}`);
                     this.runtime.logger.info(`🎯 [GOALS] Restored focus: ${this.agentGoals.currentFocus}`);
                 }
+                // LEVEL 4: Restore learning data
+                if (data.scanHistory) {
+                    this.scanHistory = data.scanHistory;
+                }
+                if (data.learnedPatterns) {
+                    this.learnedPatterns = data.learnedPatterns;
+                }
+                if (data.learningStats) {
+                    this.learningStats = data.learningStats;
+                    this.runtime.logger.info(`🧬 [LEVEL 4] Restored ${this.scanHistory.length} scan records & ${this.learnedPatterns.length} learned patterns.`);
+                }
                 
                 this.runtime.logger.info(`💾 [MEMORY] Loaded ${this.chatMemory.size} sessions, ${this.userPreferences.size} profiles, and agent goals from disk.`);
             } else {
@@ -434,6 +483,10 @@ Example output:
                 agentGoals: this.agentGoals,
                 currentPlan: this.currentPlan,
                 safeTokenCache: this.safeTokenCache,
+                // LEVEL 4: Persist learning data
+                scanHistory: this.scanHistory.slice(-200),
+                learnedPatterns: this.learnedPatterns,
+                learningStats: this.learningStats,
                 lastSaved: new Date().toISOString()
             };
             // Serialize chat memory (keep last 20 messages per session to avoid bloat)
@@ -450,6 +503,78 @@ Example output:
     }
 
     // ═══════════════════════════════════════════════════
+    //  LEVEL 4: SELF-LEARNING ENGINE
+    // ═══════════════════════════════════════════════════
+
+    /**
+     * Analyzes scan history using GPT-4o-mini to derive patterns and insights.
+     * Runs every 6 hours. Learned patterns feed into the planner prompt,
+     * making the agent smarter over time without code changes.
+     */
+    private async selfLearningEngine() {
+        if (this.scanHistory.length < 5) {
+            this.runtime.logger.info("🧬 [LEARNING] Not enough scan data yet. Need at least 5 scans to learn patterns.");
+            return;
+        }
+
+        try {
+            const OpenAI = require("openai");
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+            this.runtime.logger.info("═══════════════════════════════════════════════════");
+            this.runtime.logger.info("🧬 [LEVEL 4] Self-Learning Engine running...");
+            this.runtime.logger.info(`🧬 [LEARNING] Analyzing ${this.scanHistory.length} historical scans...`);
+
+            // Prepare a compact summary of recent scans (last 50 to save tokens)
+            const recentScans = this.scanHistory.slice(-50).map(s => 
+                `${s.name}(${s.tokenId}): risk=${s.riskScore}, treasury=${s.treasury}%`
+            ).join("\n");
+
+            const learningResponse = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    { role: "system", content: `You are an AI security analyst learning from historical token scan data.
+Analyze the scan results below and identify ACTIONABLE PATTERNS.
+
+Your job is to find correlations, red flags, and insights like:
+- What treasury percentages correlate with high-risk tokens?
+- Are there naming patterns in scam tokens?
+- What risk score distributions do you see?
+- What percentage of scanned tokens are dangerous?
+- Any time-based patterns?
+
+Output ONLY a JSON array of 3-7 pattern strings. Each pattern should be a short, actionable insight.
+
+Example output:
+["Tokens with treasury >95% are almost always rug pulls (risk >75)", "Most tokens have generic UUID-style names, which correlates with automated deployments", "Average risk score is 65/100, suggesting most new tokens are moderate-to-high risk"]` },
+                    { role: "user", content: `SCAN HISTORY (${this.scanHistory.length} total scans):\n\nRecent results:\n${recentScans}\n\nStats: total=${this.learningStats.totalScans}, highRisk=${this.learningStats.highRiskCount}, safe=${this.learningStats.safeCount}, avgScore=${this.learningStats.avgRiskScore.toFixed(1)}` }
+                ],
+                temperature: 0.3,
+                max_tokens: 400
+            });
+
+            const learningText = learningResponse.choices[0].message.content || "[]";
+            const jsonMatch = learningText.match(/\[.*\]/s);
+            if (jsonMatch) {
+                this.learnedPatterns = JSON.parse(jsonMatch[0]);
+                this.learningStats.lastLearningRun = new Date().toISOString();
+                
+                this.runtime.logger.info(`🧬 [LEARNING] Derived ${this.learnedPatterns.length} patterns:`);
+                this.learnedPatterns.forEach((p: string, i: number) => 
+                    this.runtime.logger.info(`   🔬 Pattern ${i + 1}: ${p}`)
+                );
+                
+                this.savePersistentMemory();
+                this.runtime.logger.info("🧬 [LEARNING] Patterns saved. Planner will use these insights in the next cycle.");
+            }
+
+            this.runtime.logger.info("═══════════════════════════════════════════════════");
+
+        } catch (err: any) {
+            this.runtime.logger.error(`[LEARNING] Learning engine failed: ${err.message}`);
+        }
+    }
+
     //  FEATURE 3: DYNAMIC ADAPTATION RULES
     // ═══════════════════════════════════════════════════
 
