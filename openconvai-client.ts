@@ -289,10 +289,16 @@ export class OpenConvAIClient {
             // Bypass standards-sdk sendMessage — use raw Hedera SDK directly
             const { TopicMessageSubmitTransaction, Client, PrivateKey } = await import("@hashgraph/sdk");
             const client = Client.forTestnet();
-            client.setOperator(
-                process.env.HEDERA_ACCOUNT_ID!,
-                PrivateKey.fromStringDer(process.env.HEDERA_PRIVATE_KEY!)
-            );
+            
+            // Try multiple key formats: ED25519 raw hex, DER, then generic
+            let privateKey;
+            const pkStr = process.env.HEDERA_PRIVATE_KEY!;
+            try { privateKey = PrivateKey.fromStringED25519(pkStr); } catch {
+                try { privateKey = PrivateKey.fromStringDer(pkStr); } catch {
+                    privateKey = PrivateKey.fromString(pkStr);
+                }
+            }
+            client.setOperator(process.env.HEDERA_ACCOUNT_ID!, privateKey);
 
             await new TopicMessageSubmitTransaction()
                 .setTopicId(this.globalSirenTopicId)
