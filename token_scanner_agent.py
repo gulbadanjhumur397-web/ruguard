@@ -118,15 +118,20 @@ class TokenScannerAgent:
         if activity_risk in ["HIGH", "MEDIUM"]:
             scanner_health_score -= 10
 
+        # Adjust values based on decimals for the LLM
+        adjusted_total_supply = total_supply / (10 ** decimals) if decimals > 0 else total_supply
+        adjusted_treasury = holder_metrics["treasury_balance"] / (10 ** decimals) if decimals > 0 else holder_metrics["treasury_balance"]
+
         result = {
             "token_id": token_id,
             "name": name,
             "symbol": symbol,
             "type": token_type,
-            "total_supply": total_supply,
+            "total_supply": adjusted_total_supply,
+            "raw_total_supply": total_supply,
             "decimals": decimals,
             "treasury_account": treasury_account_id,
-            "treasury_balance": holder_metrics["treasury_balance"],
+            "treasury_balance": adjusted_treasury,
             "admin_key_exists": admin_key_exists,
             "supply_key_exists": supply_key_exists,
             "freeze_key_exists": freeze_key_exists,
