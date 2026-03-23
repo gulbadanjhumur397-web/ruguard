@@ -264,9 +264,13 @@ export class OpenConvAIClient {
 
     /**
      * Autonomously broadcasts a "RUG PULL IMMINENT" alert globally across the HCS network.
+     * Uses direct Hedera SDK TopicMessageSubmitTransaction to bypass standards-sdk profile validation.
      */
     public async broadcastGlobalAlert(tokenId: string, probability: number, criticalIssue: string) {
-        if (!this.hcsClient) return;
+        if (!this.globalSirenTopicId) {
+            this.runtime.logger.warn(`[OpenConvAI] ⚠️ No siren topic available. Skipping broadcast.`);
+            return;
+        }
 
         const alertPayload = JSON.stringify({
             event: "EMERGENCY_RUG_WARNING",
@@ -281,44 +285,23 @@ export class OpenConvAIClient {
 
         this.runtime.logger.warn(`[OpenConvAI] 🚨 BROADCASTING DECENTRALIZED GLOBAL ALERT FOR ${tokenId}!`);
 
-        // Attempt broadcast, with auto-recovery if topic expired
-        for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-                if (!this.globalSirenTopicId) {
-                    await this.recreateSirenTopic();
-                }
-                await this.hcsClient.sendMessage(this.globalSirenTopicId, alertPayload);
-                this.runtime.logger.warn(`[OpenConvAI] 🚨 ALERT SUCCESSFULLY PUBLISHED TO HCS NETWORK TOPIC ${this.globalSirenTopicId}`);
-                return; // Success — exit
-            } catch (error: any) {
-                const msg = error.message || "";
-                if (msg.includes("Failed to retrieve") && attempt === 0) {
-                    this.runtime.logger.warn(`[OpenConvAI] ⚠️ Siren topic expired or unreachable. Re-creating...`);
-                    this.globalSirenTopicId = null; // Force re-creation on next loop iteration
-                } else {
-                    this.runtime.logger.error(`[OpenConvAI] Broadcast Error: ${msg}`);
-                    return;
-                }
-            }
-        }
-    }
-
-    /**
-     * Re-create the global siren topic if the previous one expired (24h TTL)
-     */
-    private async recreateSirenTopic() {
         try {
-            const sdk = await import("@hashgraphonline/standards-sdk");
-            const { InboundTopicType } = sdk;
-            const sirenResp = await this.hcsClient.createInboundTopic(
+            // Bypass standards-sdk sendMessage — use raw Hedera SDK directly
+            const { TopicMessageSubmitTransaction, Client, PrivateKey } = await import("@hashgraph/sdk");
+            const client = Client.forTestnet();
+            client.setOperator(
                 process.env.HEDERA_ACCOUNT_ID!,
-                InboundTopicType.PUBLIC,
-                86400
+                PrivateKey.fromStringDer(process.env.HEDERA_PRIVATE_KEY!)
             );
-            this.globalSirenTopicId = typeof sirenResp === "string" ? sirenResp : (sirenResp.topicId?.toString() || sirenResp.toString());
-            this.runtime.logger.info(`[OpenConvAI] ✅ New Siren Topic created: ${this.globalSirenTopicId}`);
+
+            await new TopicMessageSubmitTransaction()
+                .setTopicId(this.globalSirenTopicId)
+                .setMessage(alertPayload)
+                .execute(client);
+
+            this.runtime.logger.warn(`[OpenConvAI] 🚨 ALERT SUCCESSFULLY PUBLISHED TO HCS NETWORK TOPIC ${this.globalSirenTopicId}`);
         } catch (error: any) {
-            this.runtime.logger.error(`[OpenConvAI] ❌ Failed to re-create siren topic: ${error.message}`);
+            this.runtime.logger.error(`[OpenConvAI] Broadcast Error: ${error.message}`);
         }
     }
 }
