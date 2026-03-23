@@ -412,82 +412,66 @@ class SentimentAnalysisAgent {
 
     for (const sub of subreddits) {
       try {
-        // Try old.reddit.com with browser-like headers first (bypasses cloud IP blocks)
-        const primaryUrl = `https://old.reddit.com/r/${sub.name}/search.json?q=${encodeURIComponent(query)}&sort=new&restrict_sr=on&limit=20&t=all`;
+        // Use RSS feed — bypasses HTTP 403 blocks on cloud/datacenter IPs
+        const rssUrl = `https://www.reddit.com/r/${sub.name}/search.rss?q=${encodeURIComponent(query)}&sort=new&restrict_sr=on&limit=20&t=all`;
         const browserHeaders = {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "application/json",
+          "Accept": "text/xml, application/atom+xml",
           "Accept-Language": "en-US,en;q=0.9"
         };
         
-        let response = await this._fetchWithTimeout(primaryUrl, { headers: browserHeaders }, 8000);
+        const response = await this._fetchWithTimeout(rssUrl, { headers: browserHeaders }, 8000);
         
-        // Fallback to pullpush.io (Pushshift alternative) if Reddit blocks us
         if (!response.ok) {
-          console.log(`[Reddit] r/${sub.name}: old.reddit HTTP ${response.status}, trying pullpush.io...`);
-          const fallbackUrl = `https://api.pullpush.io/reddit/search/submission/?q=${encodeURIComponent(query)}&subreddit=${sub.name}&sort=created_utc&order=desc&size=20`;
-          try {
-            const ppResponse = await this._fetchWithTimeout(fallbackUrl, { headers: browserHeaders }, 8000);
-            if (ppResponse.ok) {
-              const ppData = await ppResponse.json();
-              const ppPosts = ppData?.data || [];
-              console.log(`[Reddit] r/${sub.name}: pullpush.io returned ${ppPosts.length} posts`);
-              for (const p of ppPosts) {
-                if (!p || !p.id) continue;
-                if (this.redditPostCache.has(p.id)) continue;
-                this.redditPostCache.add(p.id);
-                const text = `${p.title || ""} ${p.selftext || ""}`.toLowerCase();
-                const isRelevant = searchTerms.some(term => text.includes(term.toLowerCase()));
-                if (!isRelevant) continue;
-                const ageHours = (Date.now() / 1000 - (p.created_utc || 0)) / 3600;
-                const weight = this._calculateRedditWeight(p.score || 0, sub.weight, ageHours);
-                allPosts.push({
-                  id: p.id, subreddit: sub.name, subreddit_weight: sub.weight,
-                  title: (p.title || "").substring(0, 200), body: (p.selftext || "").substring(0, 300),
-                  upvotes: p.score || 0, num_comments: p.num_comments || 0,
-                  created_utc: p.created_utc || 0, age_hours: Math.round(ageHours), weight
-                });
-              }
-            } else {
-              console.log(`[Reddit] r/${sub.name}: pullpush.io HTTP ${ppResponse.status} - skipped`);
-            }
-          } catch (ppErr) {
-            console.log(`[Reddit] r/${sub.name}: pullpush.io ERROR - ${ppErr.message}`);
-          }
+          console.log(`[Reddit] r/${sub.name}: RSS HTTP ${response.status} - skipped`);
           continue;
         }
 
-        const data = await response.json();
-        const posts = data?.data?.children || [];
+        const xml = await response.text();
+        
+        // Parse Atom XML entries using regex (lightweight, no dependencies)
+        const entries = xml.match(/<entry>[\s\S]*?<\/entry>/g) || [];
+        console.log(`[Reddit] r/${sub.name}: RSS returned ${entries.length} entries`);
 
-        for (const post of posts) {
-          const p = post.data;
-          if (!p || !p.id) continue;
-          // Skip already-analyzed posts
-          if (this.redditPostCache.has(p.id)) continue;
-          this.redditPostCache.add(p.id);
-
-          // Relevance filter: must contain token name, symbol, or ID
-          const text = `${p.title || ""} ${p.selftext || ""}`.toLowerCase();
+        for (const entry of entries) {
+          const titleMatch = entry.match(/<title>([\s\S]*?)<\/title>/);
+          const idMatch = entry.match(/<id>([\s\S]*?)<\/id>/);
+          const updatedMatch = entry.match(/<updated>([\s\S]*?)<\/updated>/);
+          const contentMatch = entry.match(/<content[^>]*>([\s\S]*?)<\/content>/);
+          
+          const title = (titleMatch?.[1] || "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+          const postId = idMatch?.[1] || "";
+          
+          if (!postId) continue;
+          if (this.redditPostCache.has(postId)) continue;
+          this.redditPostCache.add(postId);
+          
+          // Extract plain text from HTML content
+          let body = (contentMatch?.[1] || "")
+            .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"')
+            .replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          
+          const text = `${title} ${body}`.toLowerCase();
           const isRelevant = searchTerms.some(term => text.includes(term.toLowerCase()));
           if (!isRelevant) continue;
 
-          const ageHours = (Date.now() / 1000 - (p.created_utc || 0)) / 3600;
-          const weight = this._calculateRedditWeight(p.score || 0, sub.weight, ageHours);
+          // Parse timestamp
+          const publishedDate = updatedMatch?.[1] ? new Date(updatedMatch[1]) : new Date();
+          const ageHours = (Date.now() - publishedDate.getTime()) / 3600000;
+          
+          // RSS doesn't include upvotes, estimate weight from subreddit reliability and age
+          const estimatedUpvotes = 10; // Conservative estimate
+          const weight = this._calculateRedditWeight(estimatedUpvotes, sub.weight, ageHours);
 
           allPosts.push({
-            id: p.id,
-            subreddit: sub.name,
-            subreddit_weight: sub.weight,
-            title: (p.title || "").substring(0, 200),
-            body: (p.selftext || "").substring(0, 300),
-            upvotes: p.score || 0,
-            num_comments: p.num_comments || 0,
-            created_utc: p.created_utc || 0,
-            age_hours: Math.round(ageHours),
-            weight
+            id: postId, subreddit: sub.name, subreddit_weight: sub.weight,
+            title: title.substring(0, 200), body: body.substring(0, 300),
+            upvotes: estimatedUpvotes, num_comments: 0,
+            created_utc: Math.floor(publishedDate.getTime() / 1000), age_hours: Math.round(ageHours), weight
           });
         }
+
+
       } catch (err) {
         console.log(`[Reddit] r/${sub.name}: ERROR - ${err.message}`);
         continue;
