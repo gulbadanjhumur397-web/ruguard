@@ -291,6 +291,7 @@ Data Quality: ${sent.data_quality || "N/A"}
 Data Sources Used: ${(sent.data_sources_used || []).join(", ") || "None"}
 AI Sentiment Summary: ${sent.ai_sentiment_summary || "N/A"}
 AI Market Confidence: ${sent.ai_market_confidence || "N/A"}
+Raw Reddit Posts Data: ${sent.raw_reddit_posts ? JSON.stringify(sent.raw_reddit_posts) : "None extracted"}
 
 ── FUNDAMENTAL DATA ──
 On-Chain Active Addresses: ${sent.fundamental_data?.on_chain?.active_addresses || "N/A"}

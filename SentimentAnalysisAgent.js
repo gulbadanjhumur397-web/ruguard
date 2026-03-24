@@ -394,6 +394,12 @@ class SentimentAnalysisAgent {
     const terms = new Set([name, symbol, `$${symbol}`]);
     if (tokenId) terms.add(tokenId);
     
+    // Custom expansion for known tokens
+    if (name.toLowerCase() === "karate") {
+        terms.add("Karate Combat");
+        terms.add("KARATE token");
+    }
+    
     // Add spaced variation for CamelCase names (e.g. SaucerSwap -> Saucer Swap)
     const spacedName = name.replace(/([A-Z])/g, ' $1').trim();
     if (spacedName !== name && spacedName.length > 3) terms.add(spacedName);
@@ -501,6 +507,13 @@ class SentimentAnalysisAgent {
     return {
       reddit_data_available: true,
       reddit_mentions: allPosts.length,
+      raw_posts: topPosts.map(p => ({
+          subreddit: p.subreddit,
+          title: p.title,
+          body: p.body.substring(0, 150),
+          upvotes: p.upvotes,
+          age_hours: p.age_hours
+      })),
       ...analysis
     };
   }
@@ -918,7 +931,8 @@ DO NOT wrap the response in markdown blocks or add extra introductory text.
         reddit_social_buzz: externalData.reddit?.social_buzz || 0,
         reddit_dev_trust: externalData.reddit?.dev_trust_score || 0.5,
         reddit_rug_risk: externalData.reddit?.rug_risk || 0,
-        reddit_allegations: externalData.reddit?.allegations || []
+        reddit_allegations: externalData.reddit?.allegations || [],
+        raw_reddit_posts: externalData.reddit?.raw_posts || []
     };
   }
 }

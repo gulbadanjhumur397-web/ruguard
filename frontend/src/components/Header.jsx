@@ -4,9 +4,9 @@ export default function Header({ lastScan }) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-white border border-card-border flex items-center justify-center text-lg">
-            <span className="text-black drop-shadow-sm">🛡️</span>
-          </div>
+            <div className="w-8 h-8 rounded-full bg-[#1A1A1A] flex items-center justify-center mr-3 shadow-md overflow-hidden border border-[#333]">
+              <img src="/logo.png" alt="RugGuard AI" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<span class="text-lg">🛡️</span>'; }} />
+            </div>
           <span className="text-xl font-bold text-white tracking-tight">
             RugGuard <span className="text-slate-500 font-medium">AI</span>
           </span>

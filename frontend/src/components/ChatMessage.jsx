@@ -15,8 +15,8 @@ export default function ChatMessage({ role, content }) {
     <div className={`flex w-full mb-6 ${isAgent ? 'justify-start' : 'justify-end'}`}>
       {isAgent && (
         <div className="flex-shrink-0 mr-3 mt-1">
-          <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center border border-card-border shadow-sm">
-            <span className="text-sm">🛡️</span>
+          <div className="w-8 h-8 rounded-full bg-[#1A1A1A] flex items-center justify-center shrink-0 border border-[#333] shadow-sm overflow-hidden">
+            <img src="/logo.png" alt="Agent" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<span class="text-sm">🛡️</span>'; }} />
           </div>
         </div>
       )}
