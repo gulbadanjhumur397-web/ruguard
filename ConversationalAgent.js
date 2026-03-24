@@ -298,6 +298,9 @@ Data Quality: ${sent.data_quality || "N/A"}
 Data Sources Used: ${(sent.data_sources_used || []).join(", ") || "None"}
 AI Sentiment Summary: ${sent.ai_sentiment_summary || "N/A"}
 AI Market Confidence: ${sent.ai_market_confidence || "N/A"}
+Reddit AI Sentiment Score: ${sent.reddit_sentiment ?? "N/A"} (Range: -1.0 to 1.0)
+Reddit AI Rug Risk: ${sent.reddit_rug_risk ?? "N/A"}
+Reddit Scanned Subreddits: r/Hedera, r/CryptoCurrency, r/CryptoMoonShots, r/SatoshiStreetBets, r/CryptoScams
 Raw Reddit Posts Data: ${sent.raw_reddit_posts ? JSON.stringify(sent.raw_reddit_posts) : "None extracted"}
 
 ── FUNDAMENTAL DATA ──
