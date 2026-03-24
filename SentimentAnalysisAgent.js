@@ -852,8 +852,8 @@ DO NOT wrap the response in markdown blocks or add extra introductory text.
 
     return {
         token_id: token_id || "unknown",
-        posts_analyzed: metrics.total_posts,
-        sentiment_security_rating: riskMetrics.sentiment_security_rating,
+        posts_analyzed: metrics.total_posts + (externalData.reddit?.reddit_mentions || 0),
+        sentiment_security_rating: external_risk_rating,
         community_risk_index: riskMetrics.community_risk_index,
         
         confidence_score,
