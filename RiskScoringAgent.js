@@ -100,20 +100,11 @@ Return strictly JSON with:
             (age_risk_score * 0.10) +
             (activity_risk_score * 0.10);
 
-        let finalScore = Math.max(0, Math.min(100, Math.round(finalScoreRaw)));
-
-        // 2. Professional Risk Level Mapping
-        let riskLevel = "VERY_LOW";
-        if (finalScore >= 81) riskLevel = "VERY_HIGH";
-        else if (finalScore >= 66) riskLevel = "HIGH";
-        else if (finalScore >= 46) riskLevel = "MEDIUM";
-        else if (finalScore >= 26) riskLevel = "LOW";
-
-        // 3. Risk Weight Intelligence
+        // 3. Risk Weight Intelligence & Final Score Calculation
         let blockchain_weight = 70;
         let sentiment_weight = 30;
         
-        const isBlockchainHigh = finalScore > 65;
+        const isBlockchainHigh = finalScoreRaw > 65;
         const isSentimentUnstable = sentimentScore > 50 && sentimentScore <= 70;
         const isSentimentDominant = sentimentScore > 70;
 
@@ -127,6 +118,18 @@ Return strictly JSON with:
             blockchain_weight = 50;
             sentiment_weight = 50;
         }
+
+        // Apply dynamic weights to create the true Hybrid Score
+        const weightedScore = (finalScoreRaw * (blockchain_weight / 100)) + (sentimentScore * (sentiment_weight / 100));
+        let finalScore = Math.max(0, Math.min(100, Math.round(weightedScore)));
+
+        // Professional Risk Level Mapping (based on final weighted score)
+        let riskLevel = "VERY_LOW";
+        if (finalScore >= 81) riskLevel = "VERY_HIGH";
+        else if (finalScore >= 66) riskLevel = "HIGH";
+        else if (finalScore >= 46) riskLevel = "MEDIUM";
+        else if (finalScore >= 26) riskLevel = "LOW";
+
 
         // 4 & 5. Primary Risk Factor & Top Contributors
         const liqRiskScore = sentiment.dex_risk_level === "HIGH" ? 90 : (sentiment.dex_risk_level === "MEDIUM" ? 50 : 10);
