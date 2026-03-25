@@ -60,6 +60,53 @@ const PIPELINE_TIMEOUT_MS = parseInt(process.env.PIPELINE_TIMEOUT_MS, 10) || 600
 
 const app = express();
 
+// ── Pipeline Mutex — serializes heavy operations ─────────────────
+// Full pipeline (scan + sentiment + risk + prediction + alert) runs
+// one-at-a-time. Light tasks (health, chat, acknowledge) bypass.
+class PipelineMutex {
+    constructor() {
+        this._locked = false;
+        this._queue = [];
+        this._currentToken = null;
+    }
+
+    get isLocked() { return this._locked; }
+    get queueLength() { return this._queue.length; }
+    get currentToken() { return this._currentToken; }
+
+    acquire(tokenId) {
+        return new Promise((resolve) => {
+            const tryAcquire = () => {
+                if (!this._locked) {
+                    this._locked = true;
+                    this._currentToken = tokenId;
+                    console.log(`[Mutex] 🔒 Acquired lock for ${tokenId} (queue: ${this._queue.length})`);
+                    resolve();
+                } else {
+                    console.log(`[Mutex] ⏳ Queued ${tokenId} (position: ${this._queue.length + 1}, current: ${this._currentToken})`);
+                    this._queue.push(tryAcquire);
+                }
+            };
+            tryAcquire();
+        });
+    }
+
+    release() {
+        const releasedToken = this._currentToken;
+        this._currentToken = null;
+        this._locked = false; // Must reset BEFORE calling next()
+        if (this._queue.length > 0) {
+            const next = this._queue.shift();
+            console.log(`[Mutex] 🔓 Released ${releasedToken}, processing next in queue...`);
+            next(); // tryAcquire will set _locked = true again
+        } else {
+            console.log(`[Mutex] 🔓 Released ${releasedToken}, queue empty`);
+        }
+    }
+}
+
+const pipelineMutex = new PipelineMutex();
+
 // ── Middleware ─────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
@@ -136,12 +183,12 @@ function buildFallbackSentiment(tokenId) {
         token_id: tokenId,
         sentiment_security_rating: "UNKNOWN",
         community_risk_index: 50,
+        community_intelligence_score: 50,
         bullish_percentage: 0,
         bearish_percentage: 0,
         liquidity_usd: 0,
         dex_risk_level: "UNKNOWN",
         data_sources_used: [],
-        community_intelligence_score: 50,
         developer_activity_risk: "UNKNOWN",
         dex_listed: false,
         confidence_score: 0,
@@ -204,7 +251,7 @@ async function runPipeline(tokenId, onStep = null) {
             symbol: scanner.symbol || "UNKNOWN",
         });
         log("SentimentAnalysisAgent", "OK");
-        emit("step_complete", { step: "SentimentAnalysisAgent", index: 3, total: TOTAL_STEPS, status: "OK", preview: `Rating: ${sentiment.sentiment_security_rating || "N/A"}, Community Risk: ${sentiment.community_risk_index ?? "N/A"}` });
+        emit("step_complete", { step: "SentimentAnalysisAgent", index: 3, total: TOTAL_STEPS, status: "OK", preview: `Rating: ${sentiment.sentiment_security_rating || "N/A"}, Intelligence Score: ${sentiment.community_intelligence_score ?? "N/A"}/100` });
     } catch (err) {
         console.warn(`[Pipeline] SentimentAgent failed, using fallback: ${err.message}`);
         sentiment = buildFallbackSentiment(tokenId);
@@ -286,8 +333,8 @@ async function runPipeline(tokenId, onStep = null) {
         monitoring_status: alert.monitoring_status,
         risk_trend: prediction.risk_trend,
         time_horizon: prediction.time_horizon,
-        key_triggers: prediction.key_triggers,
-        risk_tags: prediction.risk_tags,
+        key_triggers: prediction.key_triggers || [],
+        risk_tags: prediction.risk_tags || [],
         pipeline_log: pipelineLog,
         execution_time_ms: Date.now() - startTime,
         // Full agent data for conversational AI access
@@ -345,6 +392,34 @@ app.get("/api/health", (_req, res) => {
     });
 });
 
+// ── GET /analyze/deep/:tokenId ────────────────────────────────────
+// NOTE: This route MUST be registered BEFORE /analyze/:tokenId
+//       otherwise Express matches "deep" as a :tokenId parameter.
+app.get("/analyze/deep/:tokenId", async (req, res) => {
+    const { tokenId } = req.params;
+
+    if (!isValidTokenId(tokenId)) {
+        return res.status(400).json({
+            error: "Invalid token ID format. Expected format: 0.0.XXXXXXX",
+        });
+    }
+
+    try {
+        await pipelineMutex.acquire(tokenId);
+        const deepReport = await runDeepSearch(tokenId);
+        res.json(deepReport);
+    } catch (err) {
+        console.error(`[API] Deep search error for ${tokenId}:`, err.message);
+        res.status(500).json({
+            error: "deep search failed",
+            token_id: tokenId,
+            details: err.message,
+        });
+    } finally {
+        pipelineMutex.release();
+    }
+});
+
 // ── GET /analyze/:tokenId ─────────────────────────────────────────
 app.get("/analyze/:tokenId", async (req, res) => {
     const { tokenId } = req.params;
@@ -356,6 +431,7 @@ app.get("/analyze/:tokenId", async (req, res) => {
     }
 
     try {
+        await pipelineMutex.acquire(tokenId);
         const report = await runPipeline(tokenId);
         res.json(report);
     } catch (err) {
@@ -365,29 +441,8 @@ app.get("/analyze/:tokenId", async (req, res) => {
             token_id: tokenId,
             details: err.message,
         });
-    }
-});
-
-// ── GET /analyze/deep/:tokenId ────────────────────────────────────
-app.get("/analyze/deep/:tokenId", async (req, res) => {
-    const { tokenId } = req.params;
-
-    if (!isValidTokenId(tokenId)) {
-        return res.status(400).json({
-            error: "Invalid token ID format. Expected format: 0.0.XXXXXXX",
-        });
-    }
-
-    try {
-        const deepReport = await runDeepSearch(tokenId);
-        res.json(deepReport);
-    } catch (err) {
-        console.error(`[API] Deep search error for ${tokenId}:`, err.message);
-        res.status(500).json({
-            error: "deep search failed",
-            token_id: tokenId,
-            details: err.message,
-        });
+    } finally {
+        pipelineMutex.release();
     }
 });
 
@@ -408,6 +463,7 @@ app.post("/analyze", async (req, res) => {
     }
 
     try {
+        await pipelineMutex.acquire(token_id);
         const report = await runPipeline(token_id);
         res.json(report);
     } catch (err) {
@@ -417,6 +473,8 @@ app.post("/analyze", async (req, res) => {
             token_id,
             details: err.message,
         });
+    } finally {
+        pipelineMutex.release();
     }
 });
 
@@ -624,16 +682,28 @@ app.post("/chat/stream", async (req, res) => {
         // Notify UI that AI is thinking
         sseEmit("ai_thinking", { message: "Generating conversational response..." });
 
-        const result = await conversationalAgent.chat(message, history, reportForChat);
+        let aiReplyMessage = "";
+        let finalConfidence = 80;
+        let finalMode = "HYBRID_AI";
 
-        conversationManager.addMessage(sessionId, "assistant", result.message);
+        if (globalElizaRuntime) {
+            aiReplyMessage = await globalElizaRuntime.executeChat(sessionId, message);
+            finalMode = "ELIZA_OS_AUTONOMOUS";
+        } else {
+            const result = await conversationalAgent.chat(message, history, reportForChat);
+            aiReplyMessage = result.message;
+            finalConfidence = result.ai_confidence;
+            finalMode = result.alert_generation_mode;
+        }
+
+        conversationManager.addMessage(sessionId, "assistant", aiReplyMessage);
 
         // Send final response
         sseEmit("ai_response", {
             session_id: sessionId,
-            reply: result.message,
-            ai_confidence: result.ai_confidence,
-            alert_generation_mode: result.alert_generation_mode,
+            reply: aiReplyMessage,
+            ai_confidence: finalConfidence,
+            alert_generation_mode: finalMode,
             token_analyzed: tokensAnalyzed.length === 1 ? tokensAnalyzed[0] : tokensAnalyzed,
             tokens_compared: allReports.length > 1 ? allReports.length : undefined,
         });

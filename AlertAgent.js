@@ -94,7 +94,7 @@ Do NOT hallucinate. Do not use markdown inside values. Return only the JSON obje
                         messages: [{ role: "user", content: prompt }],
                         temperature: 0.2,
                         max_tokens: 200
-                    }), 5000);
+                    }), 15000);
 
                     let content = response.choices[0].message.content || "{}";
                     // Strip markdown
@@ -176,9 +176,12 @@ Do NOT hallucinate. Do not use markdown inside values. Return only the JSON obje
     }
 
     _evaluateTrigger(prob, riskLevel, triggers, score) {
-        if (prob > 0.40 || score > 45) return true;
+        // prob is 0-100 percentage, not 0-1 decimal
+        if (prob > 40 || score > 45) return true;
         if (["MEDIUM", "HIGH", "CRITICAL", "VERY_HIGH"].includes(riskLevel)) return true;
-        const criticalTriggers = ["Active mint authority", "Admin control vulnerability", "Treasury concentration"];
+        const criticalTriggers = ["Active mint authority", "Admin control vulnerability", "Treasury concentration",
+            "Token supply can be increased by admin", "Centralized administrative control detected",
+            "Treasury wallet concentration detected"];
         return triggers.some(t => criticalTriggers.includes(t));
     }
 
@@ -203,21 +206,30 @@ Do NOT hallucinate. Do not use markdown inside values. Return only the JSON obje
 
     // 3 PRIMARY WARNING ENGINE
     _buildPrimaryWarning(triggers, riskLevel, prob) {
+        // Map both the short labels AND the full trigger strings from RugPredictorAgent
         const map = {
             "Active mint authority": "Token has active mint authority creating supply inflation risk.",
+            "Token supply can be increased by admin": "Token has active mint authority creating supply inflation risk.",
             "Treasury concentration": "Large treasury concentration detected — potential dump vector.",
+            "Treasury wallet concentration detected": "Large treasury concentration detected — potential dump vector.",
             "Admin control vulnerability": "Admin key present allowing unilateral contract changes.",
+            "Centralized administrative control detected": "Admin key present allowing unilateral contract changes.",
             "Low liquidity depth": "Insufficient liquidity depth increases exit slippage risk.",
+            "Critically low liquidity depth": "Insufficient liquidity depth increases exit slippage risk.",
             "Holder concentration": "Whale-dominated holder distribution creates price manipulation risk.",
+            "High holder concentration": "Whale-dominated holder distribution creates price manipulation risk.",
             "Developer inactivity": "No recent developer activity signals possible project abandonment.",
-            "Negative sentiment trend": "Negative community sentiment increasing volatility risk."
+            "Significant developer inactivity": "No recent developer activity signals possible project abandonment.",
+            "Negative sentiment trend": "Negative community sentiment increasing volatility risk.",
+            "Negative community sentiment": "Negative community sentiment increasing volatility risk."
         };
         for (const t of triggers) {
             if (map[t]) return map[t];
         }
-        if (riskLevel === "CRITICAL" || riskLevel === "VERY_HIGH" || prob > 0.75) return "Token exhibits critical security indicators — immediate review recommended.";
-        if (riskLevel === "HIGH" || prob > 0.50) return "Elevated risk signals detected across multiple security vectors.";
-        if (riskLevel === "MEDIUM" || prob > 0.30) return "Moderate risk indicators present — continued monitoring advised.";
+        // prob is 0-100 percentage, not 0-1 decimal
+        if (riskLevel === "CRITICAL" || riskLevel === "VERY_HIGH" || prob > 75) return "Token exhibits critical security indicators — immediate review recommended.";
+        if (riskLevel === "HIGH" || prob > 50) return "Elevated risk signals detected across multiple security vectors.";
+        if (riskLevel === "MEDIUM" || prob > 30) return "Moderate risk indicators present — continued monitoring advised.";
         return "Token security profile within acceptable parameters.";
     }
 

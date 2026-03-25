@@ -37,6 +37,7 @@ class RugPredictorAgent {
             const risk_trend = this._detectTrend(input, features);
             const top_risk_drivers = this._calculateImportance(features).slice(0, 3).map(i => i.factor);
             const key_triggers = triggers;
+            const risk_tags = this._generateRiskTags(features, triggers);
             const ai_confidence = this._calculateConfidence(input);
             const risk_simulation = this._simulateScenarios(features, input);
 
@@ -55,6 +56,7 @@ class RugPredictorAgent {
                 risk_trend,
                 top_risk_drivers,
                 key_triggers,
+                risk_tags,
                 prediction_status: "DETERMINISTIC_ONLY",
                 ai_prediction_summary: "AI reasoning temporarily unavailable – deterministic risk analysis applied.",
                 ai_key_triggers: [],
@@ -159,9 +161,10 @@ OUTPUT JSON:
             mint_risk: clamp(br.mint_risk_score),
             admin_risk: clamp(br.admin_control_score),
             holder_concentration: clamp(br.holder_concentration_score),
-            treasury_dump_score: clamp(br.treasury_dump_score),
+            treasury_risk: clamp(br.treasury_dump_score),
             activity_risk: clamp(br.activity_risk_score),
-            community_risk_index: clamp(s.community_risk_index || 50),
+            age_risk: clamp(br.age_risk_score),
+            community_sentiment: clamp(s.community_intelligence_score !== undefined ? (100 - s.community_intelligence_score) : (s.community_risk_index || 50)),
             liquidity_strength: clamp(s.dex_risk_level === "HIGH" ? 90 : (s.dex_risk_level === "MEDIUM" ? 40 : 10)),
             developer_activity: clamp(s.developer_activity_risk === "HIGH RISK" ? 90 : (s.developer_activity_risk === "MEDIUM" ? 50 : 10)),
             external_intelligence: clamp(s.external_risk_rating === "HIGH" ? 85 : (s.external_risk_rating === "LOW" ? 20 : 50))
@@ -179,10 +182,10 @@ OUTPUT JSON:
     _detectTriggers(f) {
         return [
             { id: "Token supply can be increased by admin", val: f.mint_risk },
-            { id: "Treasury wallet concentration detected", val: f.treasury_dump_score },
+            { id: "Treasury wallet concentration detected", val: f.treasury_risk },
             { id: "Critically low liquidity depth", val: f.liquidity_strength },
             { id: "Significant developer inactivity", val: f.developer_activity },
-            { id: "Negative community sentiment", val: f.community_risk_index },
+            { id: "Negative community sentiment", val: f.community_sentiment },
             { id: "Centralized administrative control detected", val: f.admin_risk },
             { id: "High holder concentration", val: f.holder_concentration }
         ].sort((a, b) => b.val - a.val).filter(i => i.val > 40).map(i => i.id);
@@ -190,8 +193,8 @@ OUTPUT JSON:
 
     _calculateImportance(f) {
         const labels = {
-            mint_risk: "Active mint authority", admin_risk: "Centralized governance", treasury_dump_score: "Treasury concentration",
-            holder_concentration: "Holder concentration", activity_risk: "Low transactional activity", community_risk_index: "Negative community sentiment",
+            mint_risk: "Active mint authority", admin_risk: "Centralized governance", treasury_risk: "Treasury concentration",
+            holder_concentration: "Holder concentration", activity_risk: "Low transactional activity", community_sentiment: "Negative community sentiment",
             liquidity_strength: "Shallow liquidity pools", developer_activity: "Developer abandonment", external_intelligence: "Negative external signals"
         };
         return Object.entries(labels).map(([k, label]) => ({ factor: label, val: f[k] || 0 }))
@@ -201,19 +204,32 @@ OUTPUT JSON:
     _detectTrend(input, f) {
         const s = input.sentiment || {};
         const br = input.blockchain_risk;
-        if (s.community_risk_index > 60 && br.admin_control_score > 60) return "DETERIORATING";
-        if (s.community_risk_index < 40 && br.admin_control_score < 40) return "IMPROVING";
+        const communityRisk = s.community_intelligence_score !== undefined ? (100 - s.community_intelligence_score) : (s.community_risk_index || 50);
+        if (communityRisk > 60 && br.admin_control_score > 60) return "DETERIORATING";
+        if (communityRisk < 40 && br.admin_control_score < 40) return "IMPROVING";
         return "STABLE";
+    }
+
+    _generateRiskTags(features, triggers) {
+        const tags = [];
+        if (features.mint_risk > 60) tags.push("MINT_AUTHORITY");
+        if (features.admin_risk > 60) tags.push("ADMIN_CONTROL");
+        if (features.treasury_risk > 60) tags.push("TREASURY_RISK");
+        if (features.liquidity_strength > 60) tags.push("LOW_LIQUIDITY");
+        if (features.developer_activity > 60) tags.push("DEV_INACTIVE");
+        if (features.community_sentiment > 60) tags.push("NEGATIVE_SENTIMENT");
+        if (features.holder_concentration > 60) tags.push("WHALE_DOMINATED");
+        return tags;
     }
 
     _simulateScenarios(features, input) {
         const scenarios = [];
         const clamp = (val) => Math.max(0, Math.min(100, val || 0));
         
-        // 1. Liquidity drops 20%
-        const s1Features = { ...features, liquidity_strength: clamp(features.liquidity_strength * 1.25) };
+        // 1. Liquidity crisis — model near-zero liquidity
+        const s1Features = { ...features, liquidity_strength: clamp(Math.max(features.liquidity_strength * 3, 80)) };
         scenarios.push({
-            scenario: "Liquidity drops 20%",
+            scenario: "Liquidity collapses (near zero)",
             new_probability: Math.round(this._calculateProbability(s1Features).probability * 100)
         });
 
@@ -231,15 +247,15 @@ OUTPUT JSON:
             new_probability: Math.round(this._calculateProbability(s3Features).probability * 100)
         });
 
-        // 4. Liquidity increases to $1 million
-        const s4Features = { ...features, liquidity_strength: 10 };
+        // 4. Liquidity grows to $1M+ (healthy liquidity + reduced external risk)
+        const s4Features = { ...features, liquidity_strength: 5, external_intelligence: clamp(features.external_intelligence * 0.5) };
         scenarios.push({
             scenario: "Liquidity increases to $1 million",
             new_probability: Math.round(this._calculateProbability(s4Features).probability * 100)
         });
 
-        // 5. Admin key removed AND Liquidity increases to $1 million (Combined)
-        const s5Features = { ...features, admin_risk: 0, mint_risk: clamp(features.mint_risk * 0.5), liquidity_strength: 10 };
+        // 5. Admin key removed AND Liquidity increases (Combined best case)
+        const s5Features = { ...features, admin_risk: 0, mint_risk: clamp(features.mint_risk * 0.5), liquidity_strength: 5, external_intelligence: clamp(features.external_intelligence * 0.5) };
         scenarios.push({
             scenario: "Admin key removed AND Liquidity increases to $1 million",
             new_probability: Math.round(this._calculateProbability(s5Features).probability * 100)

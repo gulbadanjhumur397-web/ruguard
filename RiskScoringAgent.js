@@ -91,7 +91,11 @@ Return strictly JSON with:
             activity_risk_score = 0
         } = blockchain;
 
-        const sentimentScore = sentiment.community_risk_index || 0;
+        // Use REAL 5-source fusion score (CoinGecko + GeckoTerminal + GitHub + Reddit + NLP)
+        // community_intelligence_score is a "health" score (100=safe), invert to risk (100=dangerous)
+        const sentimentScore = sentiment.community_intelligence_score !== undefined
+            ? (100 - sentiment.community_intelligence_score)
+            : (sentiment.community_risk_index || 0);
         const finalScoreRaw =
             (mint_risk_score * 0.25) +
             (admin_control_score * 0.20) +

@@ -12,150 +12,6 @@ class SentimentAnalysisAgent {
     this.redditPostCache = new Set();
   }
 
-  /**
-   * Generates a realistic set of simulated social media posts,
-   * now including advanced security terminology for testing.
-   */
-  generateSimulatedPosts(name, symbol) {
-    const trustTemplates = [
-      `${name} looks like a solid project`,
-      `The team behind $${symbol} is a good team`,
-      `Everything checks out, ${name} is legit`,
-      `I'm holding $${symbol} long term`,
-      `The dev is a trusted dev in the community`
-    ];
-
-    const fudTemplates = [
-      `I'm worried ${name} might rug`,
-      `$${symbol} is definitely a rugpull`,
-      `${name} seems like a scam`,
-      `Are we just exit liquidity for $${symbol}?`,
-      `Looks like a honeypot, I can't sell ${name}`,
-      `Incoming dev dump for $${symbol}`,
-      `Another fraud project... ${name} is a trap`,
-      `Watch out for fake liquidity on $${symbol}`,
-      `Did they withdraw liquidity from ${name}?`
-    ];
-
-    const hypeTemplates = [
-      `$${symbol} to the moon!`,
-      `${name} is the next bitcoin`,
-      `Guaranteed 100x on $${symbol}`,
-      `Buy now! Don't miss ${name}`,
-      `Huge pump incoming for $${symbol}`,
-      `${name} is an early gem`
-    ];
-
-    const devRiskTemplates = [
-      `Why is the ${name} dev silent?`,
-      `There is no roadmap for $${symbol}`,
-      `Anonymous dev for ${name} makes me nervous`,
-      `The team missing in action on $${symbol}?`,
-      `${name} has no audit yet`
-    ];
-
-    const generalTemplates = [
-      `What does everyone think about ${name}?`,
-      `${name} volume is picking up`,
-      `${name} token is gaining attention lately`,
-      `Reading the whitepaper for ${symbol}`,
-      `New Hedera token`,
-      `Anyone trading this?`
-    ];
-
-    // Select 30-50 posts
-    const numPosts = Math.floor(Math.random() * 21) + 30;
-    const posts = [];
-
-    // Probability targets: 40% positive, 30% neutral, 30% negative.
-    // We map categories to these buckets:
-    // Positive bucket (40%): trustTemplates + hypeTemplates
-    // Negative bucket (30%): fudTemplates + devRiskTemplates
-    // Neutral bucket (30%): generalTemplates
-
-    // Base loop with explicit probability distribution 
-    for (let i = 0; i < numPosts; i++) {
-        let category;
-        const rand = Math.random();
-        
-        if (rand < 0.40) { // 40% Positive
-             // Split 60/40 between trust and hype
-             category = (Math.random() < 0.6) ? trustTemplates : hypeTemplates;
-        } else if (rand < 0.70) { // 30% Negative
-             // Split 60/40 between fud and dev risk
-             category = (Math.random() < 0.6) ? fudTemplates : devRiskTemplates;
-        } else { // 30% Neutral
-             category = generalTemplates;
-        }
-        
-        const templateList = category;
-        const post = templateList[Math.floor(Math.random() * templateList.length)];
-        posts.push(post);
-    }
-    
-    return posts;
-  }
-
-  // --- NLP HELPER FUNCTIONS ---
-
-  _detectTrust(post) {
-      const phrases = ["solid project", "good team", "legit", "long term", "trusted dev"];
-      return phrases.some(phrase => post.toLowerCase().includes(phrase));
-  }
-
-  _detectFUD(post) {
-      const phrases = ["rug", "rugpull", "scam", "exit liquidity", "honeypot", "dev dump", "fraud", "fake liquidity", "withdraw liquidity"];
-      return phrases.some(phrase => post.toLowerCase().includes(phrase));
-  }
-
-  _detectHype(post) {
-      const phrases = ["100x", "moon", "next bitcoin", "buy now", "don't miss", "pump", "early gem"];
-      return phrases.some(phrase => post.toLowerCase().includes(phrase));
-  }
-
-  _detectDevRisk(post) {
-      const phrases = ["dev silent", "no roadmap", "anonymous dev", "team missing", "no audit"];
-      return phrases.some(phrase => post.toLowerCase().includes(phrase));
-  }
-
-  _calculateRiskMetrics(metrics) {
-      const fud_score = metrics.fud_mentions * 5;
-      const manipulation_score = metrics.manipulation_mentions * 4;
-
-      let developer_trust_risk = "LOW";
-      if (metrics.dev_risk_mentions >= 6) {
-          developer_trust_risk = "HIGH";
-      } else if (metrics.dev_risk_mentions >= 3) {
-          developer_trust_risk = "MEDIUM";
-      }
-
-      let community_trust_score = (metrics.positive_mentions * 3) + (metrics.community_trust_mentions * 4) - (metrics.fud_mentions * 3);
-      community_trust_score = Math.max(0, Math.min(100, (community_trust_score * 2) + 50)); 
-
-      let community_risk_index = (fud_score * 0.4) + (manipulation_score * 0.3) + (metrics.dev_risk_mentions * 0.3);
-      community_risk_index = Math.max(0, Math.min(100, Math.floor(community_risk_index)));
-
-      let sentiment_confidence = Math.floor((metrics.total_posts / 50) * 100);
-      sentiment_confidence = Math.min(100, sentiment_confidence);
-
-      let sentiment_security_rating = "LOW RISK";
-      if (community_risk_index > 70) {
-          sentiment_security_rating = "HIGH RISK";
-      } else if (community_risk_index >= 40) {
-          sentiment_security_rating = "MEDIUM RISK";
-      }
-
-      return {
-          fud_score,
-          manipulation_score,
-          developer_trust_risk,
-          community_trust_score,
-          community_risk_index,
-          sentiment_confidence,
-          sentiment_security_rating
-      };
-  }
-
   // --- EXTERNAL INTELLIGENCE HELPERS ---
 
   /**
@@ -578,43 +434,98 @@ Be precise and data-driven.`;
    */
   _calculateRedditWeight(upvotes, subredditWeight, ageHours) {
     const upvoteScore = Math.log(Math.abs(upvotes) + 1);
-    const timeDecay = Math.exp(-0.1 * ageHours); // Fresh posts matter more
+    // Decay rate of 0.005/hr: 48h-old posts retain ~78% weight, 168h (1wk) ~43%
+    const timeDecay = Math.exp(-0.005 * ageHours);
     return upvoteScore * subredditWeight * timeDecay;
   }
 
   /**
    * 5. Sentiment Fusion Layer - Hybrid Scoring (Updated with Reddit)
    */
-  calculateCommunityIntelligence({ local_sentiment_score, cg_score, dex_score, gh_score, reddit_score }) {
+  calculateCommunityIntelligence({ cg_score, dex_score, gh_score, reddit_score }) {
       // Normalizing to 100 pt scales
-      // local_sentiment_score bounds roughly 0-100
-      // cg_score logic: coingecko community score typically 0-100
-      // dex risk logic: mapped 0, 50, 100 based on risk
       let mapped_dex_score = 50; 
       if (dex_score === "LOW") mapped_dex_score = 100;
       else if (dex_score === "HIGH") mapped_dex_score = 10;
       
-      // Github logic
       let mapped_gh_score = 50;
       if (gh_score === "LOW") mapped_gh_score = 100;
       else if (gh_score === "HIGH RISK") mapped_gh_score = 10;
 
-      // Reddit logic: convert sentiment(-1 to 1) and rug_risk(0 to 1) to 0-100 score
-      let mapped_reddit_score = 50; // neutral default
+      let mapped_reddit_score = 50;
+      let reddit_rug_risk = 0;
+      let reddit_mentions = 0;
+      let scam_allegations = [];
+
       if (reddit_score && reddit_score.reddit_data_available) {
-          const sentimentComponent = ((reddit_score.reddit_sentiment || 0) + 1) * 50; // -1→0, 0→50, 1→100
-          const riskComponent = (1 - (reddit_score.rug_risk || 0)) * 100; // 0 risk→100, 1 risk→0
+          const sentimentComponent = ((reddit_score.reddit_sentiment || 0) + 1) * 50;
+          const riskComponent = (1 - (reddit_score.rug_risk || 0)) * 100;
           mapped_reddit_score = (sentimentComponent * 0.4) + (riskComponent * 0.6);
+          reddit_rug_risk = (reddit_score.rug_risk || 0) * 100; // Scale 0-100
+          reddit_mentions = reddit_score.reddit_mentions || 0;
+          scam_allegations = reddit_score.allegations || [];
       }
-      
-      // 5-source fusion: local(20%) + CoinGecko(20%) + DEX(25%) + GitHub(15%) + Reddit(20%)
-      const score = (local_sentiment_score * 0.20) + 
-                    (cg_score * 0.20) + 
-                    (mapped_dex_score * 0.25) + 
-                    (mapped_gh_score * 0.15) +
-                    (mapped_reddit_score * 0.20);
-                    
-      return Math.floor(Math.max(0, Math.min(100, score)));
+
+      // ──────────────────────────────────────────────────────
+      // RULE 4: Low Reddit mentions (<30) → reduce Reddit weight
+      // Shift Reddit weight to DEX to avoid over-penalizing quiet tokens
+      // ──────────────────────────────────────────────────────
+      let w_reddit = 0.35, w_dex = 0.30, w_gh = 0.20, w_cg = 0.15;
+      if (reddit_mentions < 30) {
+          w_reddit = 0.25;
+          w_dex = 0.40; // Transfer weight to DEX (strongest on-chain signal)
+          console.log(`  [SmartScore] Low Reddit mentions (${reddit_mentions} < 30): Reddit weight reduced to 25%, DEX weight raised to 40%`);
+      }
+
+      // ──────────────────────────────────────────────────────
+      // STEP 1: Base score from weighted components
+      // ──────────────────────────────────────────────────────
+      // Invert mapped scores to risk (higher = more risky)
+      const redditRiskScore = 100 - mapped_reddit_score;
+      const dexRiskScore = 100 - mapped_dex_score;
+      const ghRiskScore = 100 - mapped_gh_score;
+      const cgRiskScore = 100 - (cg_score || 0);
+
+      let baseRisk = (redditRiskScore * w_reddit) + 
+                     (dexRiskScore * w_dex) + 
+                     (ghRiskScore * w_gh) +
+                     (cgRiskScore * w_cg);
+
+      // ──────────────────────────────────────────────────────
+      // STEP 2: Allegation boost — softer and capped at +12
+      // ──────────────────────────────────────────────────────
+      let allegationBoost = 0;
+      const highConfidenceAllegations = scam_allegations.filter(a => (a.confidence || 0) >= 0.8);
+      if (highConfidenceAllegations.length >= 1) {
+          allegationBoost = Math.min(8, highConfidenceAllegations.length * 4); // max +8, gentler
+          console.log(`  [SmartScore] ${highConfidenceAllegations.length} scam allegation(s) at 80%+ confidence → allegation boost: +${allegationBoost}`);
+      }
+
+      // ──────────────────────────────────────────────────────
+      // STEP 3: Divergence correction — gentler weighted average
+      // Reddit Scam Density should not diverge >±18 from base risk
+      // ──────────────────────────────────────────────────────
+      const redditScamDensity = reddit_rug_risk; // renamed for clarity
+      if (reddit_score && reddit_score.reddit_data_available && reddit_mentions >= 5) {
+          const divergence = Math.abs(baseRisk - redditScamDensity);
+          if (divergence > 18) {
+              const oldBaseRisk = baseRisk;
+              baseRisk = (baseRisk * 0.70) + (redditScamDensity * 0.30); // 70/30 blend — softer pull
+              console.log(`  [SmartScore] Reddit Scam Density (${Math.round(redditScamDensity)}) diverged ${divergence.toFixed(0)}pts from base risk (${Math.round(oldBaseRisk)}) → blended to ${Math.round(baseRisk)}`);
+          }
+      }
+
+      // ──────────────────────────────────────────────────────
+      // STEP 4: Final Community Risk score with caps
+      // Prevent extreme scores (floor 10, ceiling 90)
+      // ──────────────────────────────────────────────────────
+      let finalCommunityRisk = Math.round(baseRisk + allegationBoost);
+      finalCommunityRisk = Math.max(10, Math.min(90, finalCommunityRisk)); // prevent extremes
+
+      console.log(`  [SmartScore] Final Community Risk: ${finalCommunityRisk} (base: ${Math.round(baseRisk)}, allegation boost: +${allegationBoost})`);
+
+      // Return the community_intelligence_score (inverted from risk)
+      return Math.floor(Math.max(0, Math.min(100, 100 - finalCommunityRisk)));
   }
 
   // --- PROFESSIONAL RISK & SUMMARY ---
@@ -708,36 +619,9 @@ Be precise and data-driven.`;
     }
     
     // --- LOCAL NLP SENTIMENT ---
-    const posts = this.generateSimulatedPosts(name, symbol);
+    // User requested removal of all simulated data logic. System is now fully deterministic.
+    const metrics = { total_posts: 0, positive_mentions: 0, negative_mentions: 0, neutral_mentions: 0 };
     
-    let positive_mentions = 0;
-    let neutral_mentions = 0;
-    let negative_mentions = 0;
-    let community_trust_mentions = 0;
-    let fud_mentions = 0;
-    let manipulation_mentions = 0;
-    let dev_risk_mentions = 0;
-    
-    for (const post of posts) {
-        const result = sentiment.analyze(post);
-        if (result.score > 2) positive_mentions++;
-        else if (result.score >= -2 && result.score <= 2) neutral_mentions++;
-        else negative_mentions++;
-        
-        if (this._detectTrust(post)) community_trust_mentions++;
-        if (this._detectFUD(post)) fud_mentions++;
-        if (this._detectHype(post)) manipulation_mentions++;
-        if (this._detectDevRisk(post)) dev_risk_mentions++;
-    }
-
-    const metrics = {
-        total_posts: posts.length,
-        positive_mentions, neutral_mentions, negative_mentions,
-        community_trust_mentions, fud_mentions, manipulation_mentions, dev_risk_mentions
-    };
-
-    const riskMetrics = this._calculateRiskMetrics(metrics);
-
     console.log(`Calculating intelligence score...`);
 
     // --- FUSION LAYER ---
@@ -748,10 +632,9 @@ Be precise and data-driven.`;
     const preferred_dex_score = externalData.dex?.dex_risk_level || "HIGH";
 
     const community_intelligence_score = this.calculateCommunityIntelligence({
-        local_sentiment_score: riskMetrics.community_trust_score,
         cg_score: externalData.coingecko.coingecko_community_score || 0,
         dex_score: preferred_dex_score,
-        gh_score: externalData.github.developer_activity_risk || riskMetrics.developer_trust_risk,
+        gh_score: externalData.github.developer_activity_risk || "UNKNOWN",
         reddit_score: externalData.reddit || {}
     });
 
@@ -772,7 +655,7 @@ Be precise and data-driven.`;
     const bullishPercent = externalData.coingecko.bullish_percentage || 0;
     const bearishPercent = externalData.coingecko.bearish_percentage || 0;
     const dexRisk = preferred_dex_score || "UNKNOWN";
-    const communityRisk = riskMetrics.community_risk_index;
+    const communityRisk = 100 - community_intelligence_score;
 
     // Use GeckoTerminal Market Cap if available, fallback to CoinGecko
     const marketCap = externalData.dex?.market_cap_usd || externalData.coingecko.market_cap || 0;
@@ -854,7 +737,7 @@ DO NOT wrap the response in markdown blocks or add extra introductory text.
         token_id: token_id || "unknown",
         posts_analyzed: metrics.total_posts + (externalData.reddit?.reddit_mentions || 0),
         sentiment_security_rating: external_risk_rating,
-        community_risk_index: riskMetrics.community_risk_index,
+        community_risk_index: 100 - community_intelligence_score,
         
         confidence_score,
         data_quality,
