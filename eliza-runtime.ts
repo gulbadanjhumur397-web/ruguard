@@ -294,9 +294,11 @@ Example output:
                         // Dynamic scan count: more aggressive in fear markets
                         const scanLimit = this.marketMood.value < 25 ? 15 : this.marketMood.value < 50 ? 10 : 5;
                         mirrorUrl += `&limit=${scanLimit}`;
+                        // If we have a cursor, fetch newer tokens than before
                         if (this.lastTokenTimestamp) {
-                            mirrorUrl += `&timestamp=lt:${this.lastTokenTimestamp}`;
+                            mirrorUrl = `https://mainnet-public.mirrornode.hedera.com/api/v1/tokens?order=asc&limit=${scanLimit}&timestamp=gt:${this.lastTokenTimestamp}`;
                         }
+                        
                         const mirrorResponse = await fetch(mirrorUrl);
                         if (mirrorResponse.ok) {
                             const mirrorData = await mirrorResponse.json() as any;
@@ -304,9 +306,11 @@ Example output:
                             // Filter out already-scanned tokens
                             const newTokens = allTokens.filter((t: any) => !this.scannedTokens.has(t.token_id));
                             tokensToScan = newTokens.map((t: any) => t.token_id).slice(0, 5);
-                            // Update timestamp cursor so next cycle fetches even newer tokens
-                            if (allTokens.length > 0 && allTokens[0].created_timestamp) {
-                                this.lastTokenTimestamp = allTokens[allTokens.length - 1].created_timestamp;
+                            
+                            // Update timestamp cursor to the NEWEST token in this batch
+                            if (allTokens.length > 0) {
+                                const newestTs = this.lastTokenTimestamp ? allTokens[allTokens.length - 1].created_timestamp : allTokens[0].created_timestamp;
+                                if (newestTs) this.lastTokenTimestamp = newestTs;
                             }
                             this.runtime.logger.info(`   🔍 Fetched ${tokensToScan.length} NEW tokens from Hedera Mirror Node (${this.scannedTokens.size} already scanned)`);
                         }
@@ -445,6 +449,13 @@ Example output:
                 if (data.safeTokenCache) {
                     this.safeTokenCache = data.safeTokenCache;
                 }
+                // Restore scanner state (Pagination Fix)
+                if (data.lastTokenTimestamp) {
+                    this.lastTokenTimestamp = data.lastTokenTimestamp;
+                }
+                if (data.scannedTokensArray) {
+                    this.scannedTokens = new Set(data.scannedTokensArray);
+                }
                 // Restore agent goals (Goal Persistence)
                 if (data.agentGoals) {
                     this.agentGoals = data.agentGoals;
@@ -483,6 +494,8 @@ Example output:
                 agentGoals: this.agentGoals,
                 currentPlan: this.currentPlan,
                 safeTokenCache: this.safeTokenCache,
+                lastTokenTimestamp: this.lastTokenTimestamp,
+                scannedTokensArray: Array.from(this.scannedTokens),
                 // LEVEL 4: Persist learning data
                 scanHistory: this.scanHistory.slice(-200),
                 learnedPatterns: this.learnedPatterns,
