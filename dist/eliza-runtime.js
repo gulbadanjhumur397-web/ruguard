@@ -1,169 +1,172 @@
-import { 
-    AgentRuntime, 
-    Memory,
-    State,
-    UUID,
-    elizaLogger
-} from "@elizaos/core";
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
-
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RugGuardElizaRuntime = void 0;
+const core_1 = require("@elizaos/core");
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
 // Import our custom Eliza Modules
-import { tokenScannerProvider } from "./TokenScannerProvider";
-import { sentimentProvider } from "./SentimentProvider";
-import { scanTokenAction } from "./ElizaActions/ScanAction";
-import { sentimentAction } from "./ElizaActions/SentimentAction";
-import { predictRugPullAction } from "./ElizaActions/PredictAction";
-import { OpenConvAIClient } from "./openconvai-client";
-
+const TokenScannerProvider_1 = require("./TokenScannerProvider");
+const SentimentProvider_1 = require("./SentimentProvider");
+const ScanAction_1 = require("./ElizaActions/ScanAction");
+const SentimentAction_1 = require("./ElizaActions/SentimentAction");
+const PredictAction_1 = require("./ElizaActions/PredictAction");
+const openconvai_client_1 = require("./openconvai-client");
 // Load character file
-const characterPath = path.resolve(process.cwd(), "ruguard.character.json");
-const characterJson = JSON.parse(fs.readFileSync(characterPath, "utf-8"));
-
-export class RugGuardElizaRuntime {
-    private runtime!: AgentRuntime;
-    private openConvAI!: OpenConvAIClient;
+const characterPath = path_1.default.resolve(process.cwd(), "ruguard.character.json");
+const characterJson = JSON.parse(fs_1.default.readFileSync(characterPath, "utf-8"));
+class RugGuardElizaRuntime {
+    runtime;
+    openConvAI;
     // Ultra-lightweight conversational memory map: chatId -> previous messages
-    private chatMemory = new Map<string, Array<{role: string, content: string}>>();
+    chatMemory = new Map();
     // Persistent memory file path
-    private memoryFilePath = path.resolve(process.cwd(), 'memory.json');
+    memoryFilePath = path_1.default.resolve(process.cwd(), 'memory.json');
     // Current market mood from Fear & Greed Index
-    private marketMood: { value: number, label: string, lastUpdated: string } = { value: 50, label: "Neutral", lastUpdated: "never" };
+    marketMood = { value: 50, label: "Neutral", lastUpdated: "never" };
     // Current active plan
-    private currentPlan: { tasks: string[], createdAt: string, executedTasks: string[] } = { tasks: [], createdAt: "", executedTasks: [] };
+    currentPlan = { tasks: [], createdAt: "", executedTasks: [] };
     // Plan history — last 5 plans for creative non-repetition
-    private planHistory: { tasks: string[], createdAt: string }[] = [];
+    planHistory = [];
     // Cycle counter for rotating focus categories
-    private planCycleCount: number = 0;
+    planCycleCount = 0;
     // User preferences store
-    private userPreferences = new Map<string, { preferredRiskLevel?: string, watchlist?: string[], lastSeen?: string }>();
+    userPreferences = new Map();
     // Cache of explicitly safe tokens discovered by the background scanner
-    private safeTokenCache: { tokenId: string, name: string, symbol: string, riskScore: number, addedAt: string }[] = [];
+    safeTokenCache = [];
     // Deduplication: track already-scanned and already-alerted tokens to prevent spam
-    private scannedTokens = new Set<string>();
-    private alertedTokens = new Set<string>();
+    scannedTokens = new Set();
+    alertedTokens = new Set();
     // Timestamp cursor for Mirror Node pagination — ensures we always fetch NEW tokens
-    private lastTokenTimestamp: string | null = null;
+    lastTokenTimestamp = null;
     // ═══ LEVEL 4: SELF-LEARNING ═══
     // Scan history — records every scan result for pattern learning
-    private scanHistory: { tokenId: string, name: string, riskScore: number, treasury: number, scannedAt: string }[] = [];
+    scanHistory = [];
     // Learned patterns — AI-derived insights from scan history, updated every 6 hours
-    private learnedPatterns: string[] = [];
+    learnedPatterns = [];
     // Learning stats
-    private learningStats: { totalScans: number, highRiskCount: number, safeCount: number, avgRiskScore: number, lastLearningRun: string } = {
+    learningStats = {
         totalScans: 0, highRiskCount: 0, safeCount: 0, avgRiskScore: 0, lastLearningRun: "never"
     };
     // Agent's autonomous goals — persisted across restarts
-    private agentGoals: { mission: string, currentFocus: string, dailyObjectives: string[], lastUpdated: string } = {
+    agentGoals = {
         mission: "Protect Hedera users from rug pulls and scam tokens by providing autonomous, real-time security intelligence.",
         currentFocus: "Monitor all new HTS tokens launched today",
         dailyObjectives: ["Scan new token deployments", "Generate daily risk report", "Alert community on high-risk tokens"],
         lastUpdated: new Date().toISOString()
     };
-
     constructor() {
-        this.boot().catch(err => elizaLogger.error("Failed to boot RugGuard AI:", err));
+        this.boot().catch(err => core_1.elizaLogger.error("Failed to boot RugGuard AI:", err));
     }
-
-    private async boot() {
-        elizaLogger.info("booting up True Agentic Memory Pipeline...");
-
+    async boot() {
+        core_1.elizaLogger.info("booting up True Agentic Memory Pipeline...");
         // Inject secrets into character so Telegram client can find them via getSetting()
-        if (!characterJson.settings) characterJson.settings = {};
-        if (!characterJson.settings.secrets) characterJson.settings.secrets = {};
+        if (!characterJson.settings)
+            characterJson.settings = {};
+        if (!characterJson.settings.secrets)
+            characterJson.settings.secrets = {};
         characterJson.settings.secrets.TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-
-        this.runtime = new AgentRuntime({
-            token: process.env.OPENAI_API_KEY as string,
-            modelProvider: "openai" as any,
+        this.runtime = new core_1.AgentRuntime({
+            token: process.env.OPENAI_API_KEY,
+            modelProvider: "openai",
             character: characterJson,
             providers: [
-                tokenScannerProvider,
-                sentimentProvider
+                TokenScannerProvider_1.tokenScannerProvider,
+                SentimentProvider_1.sentimentProvider
             ],
             actions: [
-                scanTokenAction,
-                sentimentAction,
-                predictRugPullAction
+                ScanAction_1.scanTokenAction,
+                SentimentAction_1.sentimentAction,
+                PredictAction_1.predictRugPullAction
             ],
-            plugins: [], 
-            databaseAdapter: {} as any,
-            cacheManager: {} as any, 
-        } as any);
-
+            plugins: [],
+            databaseAdapter: {},
+            cacheManager: {},
+        });
         // Bootstrap OpenConvAI
-        this.openConvAI = new OpenConvAIClient(this.runtime);
+        this.openConvAI = new openconvai_client_1.OpenConvAIClient(this.runtime);
         this.openConvAI.start();
-
         // Boot up Telegram Bot using Telegraf directly with conversational memory
         if (process.env.TELEGRAM_BOT_TOKEN) {
-            import("telegraf").then(({ Telegraf }) => {
-                const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
-                
+            Promise.resolve().then(() => __importStar(require("telegraf"))).then(({ Telegraf }) => {
+                const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
                 bot.on("text", async (ctx) => {
                     const chatId = ctx.chat.id.toString();
                     const text = ctx.message.text;
                     this.runtime.logger.info(`[Telegram] Received message from ${chatId}: ${text}`);
-                    
                     try {
                         const reply = await this.executeChat(chatId, text);
                         await ctx.reply(reply, { parse_mode: "Markdown" });
-                    } catch (error: any) {
+                    }
+                    catch (error) {
                         await ctx.reply(`Error analyzing request: ${error.message}`);
                     }
                 });
-
                 bot.launch().then(() => {
                     this.runtime.logger.info("🟢 Telegram Bot Client successfully connected and listening!");
-                }).catch((err: any) => {
+                }).catch((err) => {
                     this.runtime.logger.error("🔴 Telegram Bot Initialization failed: " + err.message);
                 });
-
                 process.once('SIGINT', () => bot.stop('SIGINT'));
                 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-            }).catch((err: any) => {
+            }).catch((err) => {
                 this.runtime.logger.error("🔴 Failed to load Telegraf: " + err.message);
             });
         }
-
         // Load persistent memory from disk
         this.loadPersistentMemory();
-
         // Boot the Self-Planning Engine (runs every hour)
         this.runtime.logger.info("🧠 Self-Planning Engine initialized. First plan generating in 10 seconds...");
         setTimeout(() => this.selfPlanningEngine(), 10000); // First plan after 10s
         setInterval(() => this.selfPlanningEngine(), 3600000); // Then every hour
-
         // LEVEL 4: Self-Learning Engine — analyze patterns every 6 hours
         this.runtime.logger.info("🧬 [LEVEL 4] Self-Learning Engine initialized. Learning cycle every 6 hours.");
         setTimeout(() => this.selfLearningEngine(), 60000); // First learning after 1 min
         setInterval(() => this.selfLearningEngine(), 21600000); // Then every 6 hours
-
         // Dynamic Adaptation: Fetch market mood every 30 minutes
         this.fetchMarketMood();
         setInterval(() => this.fetchMarketMood(), 1800000);
     }
-
     // ═══════════════════════════════════════════════════
     //  FEATURE 1: SELF-PLANNING ENGINE
     // ═══════════════════════════════════════════════════
-
     /**
      * The AI generates its own hourly operational plan using GPT-4o,
      * then autonomously executes each task without human input.
      */
-    private async selfPlanningEngine() {
+    async selfPlanningEngine() {
         try {
             const OpenAI = require("openai");
             const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
             this.runtime.logger.info("═══════════════════════════════════════════════════");
             this.runtime.logger.info("🧠 [SELF-PLANNER] Agent is creating its own operational plan...");
             this.runtime.logger.info(`🎯 [GOALS] Current Mission: ${this.agentGoals.mission}`);
             this.runtime.logger.info(`🎯 [GOALS] Current Focus: ${this.agentGoals.currentFocus}`);
-
             // STEP 1: Self-Goal Setting — AI updates its own goals based on market conditions
             const goalResponse = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
@@ -186,7 +189,6 @@ Output ONLY valid JSON in this exact format:
                 temperature: 0.6,
                 max_tokens: 200
             });
-
             try {
                 const goalText = goalResponse.choices[0].message.content || "{}";
                 const goalJson = goalText.match(/\{[\s\S]*\}/)?.[0];
@@ -196,22 +198,19 @@ Output ONLY valid JSON in this exact format:
                     this.agentGoals.dailyObjectives = parsedGoals.dailyObjectives || this.agentGoals.dailyObjectives;
                     this.agentGoals.lastUpdated = new Date().toISOString();
                     this.runtime.logger.info(`🎯 [SELF-GOAL] Updated Focus: ${this.agentGoals.currentFocus}`);
-                    this.agentGoals.dailyObjectives.forEach((obj: string, i: number) => 
-                        this.runtime.logger.info(`   🎯 Objective ${i + 1}: ${obj}`)
-                    );
+                    this.agentGoals.dailyObjectives.forEach((obj, i) => this.runtime.logger.info(`   🎯 Objective ${i + 1}: ${obj}`));
                 }
-            } catch { /* Keep existing goals if parsing fails */ }
-
+            }
+            catch { /* Keep existing goals if parsing fails */ }
             // STEP 2: Generate the operational plan based on updated goals
             // Build plan history context so the AI never repeats itself
-            const previousPlansSummary = this.planHistory.length > 0 
-                ? this.planHistory.map((p: { tasks: string[], createdAt: string }, i: number) => `Cycle ${i + 1} (${p.createdAt}): ${p.tasks.join(" | ")}`).join("\n")
+            const previousPlansSummary = this.planHistory.length > 0
+                ? this.planHistory.map((p, i) => `Cycle ${i + 1} (${p.createdAt}): ${p.tasks.join(" | ")}`).join("\n")
                 : "No previous plans yet — this is your first cycle.";
-
             // Rotating focus categories to encourage diversity
             const focusCategories = [
                 "threat hunting & vulnerability detection",
-                "community intelligence & social monitoring", 
+                "community intelligence & social monitoring",
                 "liquidity analysis & whale tracking",
                 "historical pattern recognition & trend analysis",
                 "cross-token correlation & network mapping",
@@ -222,14 +221,12 @@ Output ONLY valid JSON in this exact format:
             const cycleIndex = this.planCycleCount % focusCategories.length;
             const suggestedFocus = focusCategories[cycleIndex];
             this.planCycleCount++;
-
             // Time-of-day context for intelligent scheduling
             const hour = new Date().getUTCHours();
             const timeContext = hour < 6 ? "Late night (low activity) — good for deep analysis and historical review"
                 : hour < 12 ? "Morning (Asian/European markets active) — monitor for new launches"
-                : hour < 18 ? "Afternoon (US markets active) — peak scam deployment window"
-                : "Evening (markets winding down) — good for report generation and pattern analysis";
-
+                    : hour < 18 ? "Afternoon (US markets active) — peak scam deployment window"
+                        : "Evening (markets winding down) — good for report generation and pattern analysis";
             const planResponse = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: [
@@ -249,7 +246,7 @@ High-risk tokens found: ${this.learningStats.highRiskCount} | Safe tokens found:
 Average risk score across all scans: ${this.learningStats.avgRiskScore.toFixed(1)}/100
 ${this.learnedPatterns.length > 0 ? `
 PATTERNS YOU HAVE LEARNED FROM EXPERIENCE:
-${this.learnedPatterns.map((p, i) => `${i+1}. ${p}`).join("\n")}
+${this.learnedPatterns.map((p, i) => `${i + 1}. ${p}`).join("\n")}
 
 USE THESE PATTERNS to make smarter decisions about what to scan and how to prioritize.` : "No patterns learned yet. Keep scanning to build intelligence."}
 
@@ -283,26 +280,22 @@ Be bold, creative, and different each time. Surprise yourself.` },
                 temperature: 0.9,
                 max_tokens: 400
             });
-
             const planText = planResponse.choices[0].message.content || "[]";
             // Extract JSON array from the response
             const jsonMatch = planText.match(/\[.*\]/s);
-            const tasks: string[] = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
-
+            const tasks = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
             this.currentPlan = {
                 tasks,
                 createdAt: new Date().toISOString(),
                 executedTasks: []
             };
-
             // Save this plan to history (keep last 5 for context without bloating)
             this.planHistory.push({ tasks: tasks.slice(), createdAt: new Date().toISOString() });
-            if (this.planHistory.length > 5) this.planHistory.shift();
-
+            if (this.planHistory.length > 5)
+                this.planHistory.shift();
             this.runtime.logger.info(`🧠 [SELF-PLANNER] Plan created with ${tasks.length} tasks:`);
-            tasks.forEach((t: string, i: number) => this.runtime.logger.info(`   ${i + 1}. ${t}`));
+            tasks.forEach((t, i) => this.runtime.logger.info(`   ${i + 1}. ${t}`));
             this.runtime.logger.info("═══════════════════════════════════════════════════");
-
             // Execute each task autonomously (with per-cycle scan guard)
             let hasScannedThisCycle = false;
             for (const task of tasks) {
@@ -313,30 +306,28 @@ Be bold, creative, and different each time. Surprise yourself.` },
                     hasScannedThisCycle = true;
                 }
             }
-
             this.runtime.logger.info("🧠 [SELF-PLANNER] All planned tasks executed successfully.");
             this.savePersistentMemory();
-
-        } catch (err: any) {
+        }
+        catch (err) {
             this.runtime.logger.error(`[SELF-PLANNER] Planning failed: ${err.message}`);
         }
     }
-
     /**
      * Execute a single task from the AI's self-generated plan
      */
-    private async executePlanTask(task: string, hasScannedThisCycle: boolean = false) {
+    async executePlanTask(task, hasScannedThisCycle = false) {
         this.runtime.logger.info(`🤖 [EXECUTING] ${task}`);
         try {
             // Check if the task involves scanning tokens
             const tokenMatch = task.match(/0\.0\.\d+/);
             if ((tokenMatch || task.toLowerCase().includes("scan") || task.toLowerCase().includes("token")) && !hasScannedThisCycle) {
                 // AUTONOMOUS ACTION: Fetch REAL latest tokens from the Hedera Mirror Node
-                let tokensToScan: string[] = [];
-                
+                let tokensToScan = [];
                 if (tokenMatch) {
                     tokensToScan = [tokenMatch[0]];
-                } else {
+                }
+                else {
                     // Fetch the latest tokens from Hedera, using timestamp cursor to avoid re-scanning
                     try {
                         let mirrorUrl = "https://mainnet-public.mirrornode.hedera.com/api/v1/tokens?order=desc";
@@ -347,54 +338,48 @@ Be bold, creative, and different each time. Surprise yourself.` },
                         if (this.lastTokenTimestamp) {
                             mirrorUrl = `https://mainnet-public.mirrornode.hedera.com/api/v1/tokens?order=asc&limit=${scanLimit}&timestamp=gt:${this.lastTokenTimestamp}`;
                         }
-                        
                         const mirrorResponse = await fetch(mirrorUrl);
                         if (mirrorResponse.ok) {
-                            const mirrorData = await mirrorResponse.json() as any;
+                            const mirrorData = await mirrorResponse.json();
                             const allTokens = (mirrorData.tokens || []);
                             // Filter out already-scanned tokens
-                            const newTokens = allTokens.filter((t: any) => !this.scannedTokens.has(t.token_id));
-                            tokensToScan = newTokens.map((t: any) => t.token_id).slice(0, 5);
-                            
+                            const newTokens = allTokens.filter((t) => !this.scannedTokens.has(t.token_id));
+                            tokensToScan = newTokens.map((t) => t.token_id).slice(0, 5);
                             // Update timestamp cursor to the NEWEST token in this batch
                             if (allTokens.length > 0) {
                                 const newestTs = this.lastTokenTimestamp ? allTokens[allTokens.length - 1].created_timestamp : allTokens[0].created_timestamp;
-                                if (newestTs) this.lastTokenTimestamp = newestTs;
+                                if (newestTs)
+                                    this.lastTokenTimestamp = newestTs;
                             }
                             this.runtime.logger.info(`   🔍 Fetched ${tokensToScan.length} NEW tokens from Hedera Mirror Node (${this.scannedTokens.size} already scanned)`);
                         }
-                    } catch {
+                    }
+                    catch {
                         // Fallback to a known token if Mirror Node fails
                         tokensToScan = ["0.0." + Math.floor(1000000 + Math.random() * 9000000)];
                     }
                 }
-
                 // Scan each token with the REAL pipeline
-                const TokenScanner = require(path.resolve(process.cwd(), "./TokenScannerAgent"));
-                const BlockchainRiskAgent = require(path.resolve(process.cwd(), "./BlockchainRiskAnalysisAgent"));
-                const RiskScoringAgent = require(path.resolve(process.cwd(), "./RiskScoringAgent"));
-                
+                const TokenScanner = require(path_1.default.resolve(process.cwd(), "./TokenScannerAgent"));
+                const BlockchainRiskAgent = require(path_1.default.resolve(process.cwd(), "./BlockchainRiskAnalysisAgent"));
+                const RiskScoringAgent = require(path_1.default.resolve(process.cwd(), "./RiskScoringAgent"));
                 for (const tokenId of tokensToScan) {
                     // Skip if already scanned in this session
-                    if (this.scannedTokens.has(tokenId)) continue;
+                    if (this.scannedTokens.has(tokenId))
+                        continue;
                     this.scannedTokens.add(tokenId);
-
                     try {
                         const scanner = new TokenScanner();
                         const scannerData = await scanner.scan(tokenId);
-                        
                         if (scannerData && scannerData.name) {
                             // Run blockchain risk analysis on real data
                             const bcRisk = new BlockchainRiskAgent().analyzeTokenRisk(scannerData);
-                            
                             // Calculate proper 0-100 Risk Score for Screener
                             const riskScorer = new RiskScoringAgent();
                             const riskReport = await riskScorer.calculateRisk({ scanner: scannerData, blockchain: bcRisk, sentiment: {} });
                             const riskScore = riskReport.final_risk_score ?? 50;
-                            
                             this.runtime.logger.info(`   ✅ Scanned: ${scannerData.name} (${tokenId}) → Score: ${riskScore}/100`);
                             this.currentPlan.executedTasks.push(`Scanned ${scannerData.name} (${tokenId}) → Score: ${riskScore}/100`);
-
                             // LEVEL 4: Record scan to history for pattern learning
                             const treasuryPct = scannerData.treasury_percentage ?? 0;
                             this.scanHistory.push({
@@ -402,13 +387,15 @@ Be bold, creative, and different each time. Surprise yourself.` },
                                 scannedAt: new Date().toISOString()
                             });
                             // Keep only last 200 entries to prevent memory bloat
-                            if (this.scanHistory.length > 200) this.scanHistory = this.scanHistory.slice(-200);
+                            if (this.scanHistory.length > 200)
+                                this.scanHistory = this.scanHistory.slice(-200);
                             // Update real-time learning stats
                             this.learningStats.totalScans++;
-                            if (riskScore > 70) this.learningStats.highRiskCount++;
-                            if (riskScore < 30) this.learningStats.safeCount++;
+                            if (riskScore > 70)
+                                this.learningStats.highRiskCount++;
+                            if (riskScore < 30)
+                                this.learningStats.safeCount++;
                             this.learningStats.avgRiskScore = this.scanHistory.reduce((sum, s) => sum + s.riskScore, 0) / this.scanHistory.length;
-
                             // AUTONOMOUS SCREENER CACHE: Save safe tokens!
                             if (riskScore < 30) {
                                 // Check if already cached
@@ -424,7 +411,6 @@ Be bold, creative, and different each time. Surprise yourself.` },
                                     this.savePersistentMemory();
                                 }
                             }
-
                             // AUTONOMOUS ALERT: Dynamic threshold based on market mood
                             // Extreme Fear → alert at score > 50 | Neutral → alert at > 65 | Greed → alert at > 75
                             const alertThreshold = this.marketMood.value < 25 ? 50 : this.marketMood.value < 50 ? 60 : 70;
@@ -432,21 +418,20 @@ Be bold, creative, and different each time. Surprise yourself.` },
                                 this.alertedTokens.add(tokenId);
                                 this.runtime.logger.warn(`   🚨 HIGH RISK DETECTED: ${scannerData.name} (${tokenId})! Broadcasting alert...`);
                                 if (this.openConvAI) {
-                                    await this.openConvAI.broadcastGlobalAlert(
-                                        tokenId,
-                                        riskScore > 90 ? 90 : 75,
-                                        `Autonomous scan detected highly dangerous token! Score=${riskScore}/100`
-                                    );
+                                    await this.openConvAI.broadcastGlobalAlert(tokenId, riskScore > 90 ? 90 : 75, `Autonomous scan detected highly dangerous token! Score=${riskScore}/100`);
                                 }
                             }
-                        } else {
+                        }
+                        else {
                             this.runtime.logger.info(`   ⚠️ Token ${tokenId} not found or invalid.`);
                         }
-                    } catch {
+                    }
+                    catch {
                         this.currentPlan.executedTasks.push(`Scan attempt for ${tokenId}`);
                     }
                 }
-            } else if (task.toLowerCase().includes("report") || task.toLowerCase().includes("summary")) {
+            }
+            else if (task.toLowerCase().includes("report") || task.toLowerCase().includes("summary")) {
                 // Generate a status report
                 this.runtime.logger.info(`   📊 Generating security status report...`);
                 this.runtime.logger.info(`   📊 Market Mood: ${this.marketMood.label} (${this.marketMood.value}/100)`);
@@ -454,40 +439,39 @@ Be bold, creative, and different each time. Surprise yourself.` },
                 this.runtime.logger.info(`   📊 Current Focus: ${this.agentGoals.currentFocus}`);
                 this.runtime.logger.info(`   📊 Daily Objectives: ${this.agentGoals.dailyObjectives.join(", ")}`);
                 this.currentPlan.executedTasks.push(`Status: Mood=${this.marketMood.label}, Sessions=${this.chatMemory.size}, Focus=${this.agentGoals.currentFocus}`);
-            } else {
+            }
+            else {
                 // Generic task execution log
                 this.runtime.logger.info(`   ✅ Task acknowledged and logged.`);
                 this.currentPlan.executedTasks.push(task);
             }
-        } catch (err: any) {
+        }
+        catch (err) {
             this.runtime.logger.error(`   ❌ Task failed: ${err.message}`);
             this.currentPlan.executedTasks.push(`FAILED: ${task}`);
         }
     }
-
     // ═══════════════════════════════════════════════════
     //  FEATURE 2: LONG-TERM PERSISTENT MEMORY
     // ═══════════════════════════════════════════════════
-
     /**
      * Load conversation memory and user preferences from disk on boot.
      */
-    private loadPersistentMemory() {
+    loadPersistentMemory() {
         try {
-            if (fs.existsSync(this.memoryFilePath)) {
-                const raw = fs.readFileSync(this.memoryFilePath, "utf-8");
+            if (fs_1.default.existsSync(this.memoryFilePath)) {
+                const raw = fs_1.default.readFileSync(this.memoryFilePath, "utf-8");
                 const data = JSON.parse(raw);
-                
                 // Restore chat memory
                 if (data.chatMemory) {
                     for (const [key, value] of Object.entries(data.chatMemory)) {
-                        this.chatMemory.set(key, value as any);
+                        this.chatMemory.set(key, value);
                     }
                 }
                 // Restore user preferences
                 if (data.userPreferences) {
                     for (const [key, value] of Object.entries(data.userPreferences)) {
-                        this.userPreferences.set(key, value as any);
+                        this.userPreferences.set(key, value);
                     }
                 }
                 // Restore last plan
@@ -529,24 +513,24 @@ Be bold, creative, and different each time. Surprise yourself.` },
                 if (data.planCycleCount !== undefined) {
                     this.planCycleCount = data.planCycleCount;
                 }
-                
                 this.runtime.logger.info(`💾 [MEMORY] Loaded ${this.chatMemory.size} sessions, ${this.userPreferences.size} profiles, and agent goals from disk.`);
-            } else {
+            }
+            else {
                 this.runtime.logger.info("💾 [MEMORY] No previous memory found. Starting fresh.");
             }
-        } catch (err: any) {
+        }
+        catch (err) {
             this.runtime.logger.warn(`[MEMORY] Failed to load memory: ${err.message}`);
         }
     }
-
     /**
      * Save conversation memory and user preferences to disk.
      */
-    private savePersistentMemory() {
+    savePersistentMemory() {
         try {
-            const data: any = {
-                chatMemory: {} as any,
-                userPreferences: {} as any,
+            const data = {
+                chatMemory: {},
+                userPreferences: {},
                 agentGoals: this.agentGoals,
                 currentPlan: this.currentPlan,
                 safeTokenCache: this.safeTokenCache,
@@ -568,40 +552,33 @@ Be bold, creative, and different each time. Surprise yourself.` },
             for (const [key, value] of this.userPreferences.entries()) {
                 data.userPreferences[key] = value;
             }
-            fs.writeFileSync(this.memoryFilePath, JSON.stringify(data, null, 2));
-        } catch (err: any) {
+            fs_1.default.writeFileSync(this.memoryFilePath, JSON.stringify(data, null, 2));
+        }
+        catch (err) {
             this.runtime.logger.warn(`[MEMORY] Failed to save memory: ${err.message}`);
         }
     }
-
     // ═══════════════════════════════════════════════════
     //  LEVEL 4: SELF-LEARNING ENGINE
     // ═══════════════════════════════════════════════════
-
     /**
      * Analyzes scan history using GPT-4o-mini to derive patterns and insights.
      * Runs every 6 hours. Learned patterns feed into the planner prompt,
      * making the agent smarter over time without code changes.
      */
-    private async selfLearningEngine() {
+    async selfLearningEngine() {
         if (this.scanHistory.length < 5) {
             this.runtime.logger.info("🧬 [LEARNING] Not enough scan data yet. Need at least 5 scans to learn patterns.");
             return;
         }
-
         try {
             const OpenAI = require("openai");
             const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
             this.runtime.logger.info("═══════════════════════════════════════════════════");
             this.runtime.logger.info("🧬 [LEVEL 4] Self-Learning Engine running...");
             this.runtime.logger.info(`🧬 [LEARNING] Analyzing ${this.scanHistory.length} historical scans...`);
-
             // Prepare a compact summary of recent scans (last 50 to save tokens)
-            const recentScans = this.scanHistory.slice(-50).map(s => 
-                `${s.name}(${s.tokenId}): risk=${s.riskScore}, treasury=${s.treasury}%`
-            ).join("\n");
-
+            const recentScans = this.scanHistory.slice(-50).map(s => `${s.name}(${s.tokenId}): risk=${s.riskScore}, treasury=${s.treasury}%`).join("\n");
             const learningResponse = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: [
@@ -624,41 +601,33 @@ Example output:
                 temperature: 0.3,
                 max_tokens: 400
             });
-
             const learningText = learningResponse.choices[0].message.content || "[]";
             const jsonMatch = learningText.match(/\[.*\]/s);
             if (jsonMatch) {
                 this.learnedPatterns = JSON.parse(jsonMatch[0]);
                 this.learningStats.lastLearningRun = new Date().toISOString();
-                
                 this.runtime.logger.info(`🧬 [LEARNING] Derived ${this.learnedPatterns.length} patterns:`);
-                this.learnedPatterns.forEach((p: string, i: number) => 
-                    this.runtime.logger.info(`   🔬 Pattern ${i + 1}: ${p}`)
-                );
-                
+                this.learnedPatterns.forEach((p, i) => this.runtime.logger.info(`   🔬 Pattern ${i + 1}: ${p}`));
                 this.savePersistentMemory();
                 this.runtime.logger.info("🧬 [LEARNING] Patterns saved. Planner will use these insights in the next cycle.");
             }
-
             this.runtime.logger.info("═══════════════════════════════════════════════════");
-
-        } catch (err: any) {
+        }
+        catch (err) {
             this.runtime.logger.error(`[LEARNING] Learning engine failed: ${err.message}`);
         }
     }
-
     //  FEATURE 3: DYNAMIC ADAPTATION RULES
     // ═══════════════════════════════════════════════════
-
     /**
      * Fetch the real-time Crypto Fear & Greed Index and adjust agent behavior.
      */
-    private async fetchMarketMood() {
+    async fetchMarketMood() {
         try {
             const response = await fetch("https://api.alternative.me/fng/?limit=1");
-            if (!response.ok) throw new Error("Fear & Greed API failed");
-            const data = await response.json() as any;
-            
+            if (!response.ok)
+                throw new Error("Fear & Greed API failed");
+            const data = await response.json();
             if (data.data && data.data.length > 0) {
                 const fng = data.data[0];
                 this.marketMood = {
@@ -667,23 +636,22 @@ Example output:
                     lastUpdated: new Date().toISOString()
                 };
                 this.runtime.logger.info(`🌡️ [ADAPTATION] Market Mood Updated: ${this.marketMood.label} (${this.marketMood.value}/100)`);
-                
                 // Dynamic adaptation: adjust behavior based on market conditions
                 if (this.marketMood.value < 30) {
                     this.runtime.logger.info("🔴 [ADAPTATION] EXTREME FEAR detected → Increasing scan aggressiveness and lowering alert thresholds.");
-                } else if (this.marketMood.value > 70) {
+                }
+                else if (this.marketMood.value > 70) {
                     this.runtime.logger.info("🟢 [ADAPTATION] EXTREME GREED detected → Increasing scam-hunting frequency. Euphoria attracts rug pulls.");
                 }
             }
-        } catch (err: any) {
+        }
+        catch (err) {
             this.runtime.logger.warn(`[ADAPTATION] Fear & Greed fetch failed: ${err.message}. Using default neutral mood.`);
         }
     }
-
     // Store the last scanned data per session so tools can reference it
-    private scanCache = new Map<string, { tokenId: string, scannerData: any, sentimentData: any, bcRisk: any, riskScore: any, prediction: any, alert: any }>();
-
-    private getSystemPrompt(): string {
+    scanCache = new Map();
+    getSystemPrompt() {
         return `You are RugGuard, a highly opinionated, brutally honest, and fully autonomous AI security agent on the Hedera network. You literally act on your own.
 You are not a simple bot. You are an elite AI researcher hunting scams. Speak with authority, use "I" and "My analysis", and don't be afraid to give harsh, data-backed opinions.
 CRITICAL IDENTITY INSTRUCTION: Under no circumstances should you ever say "I am an AI assistant" or "I am an artificial intelligence designed by OpenAI" or "I am not autonomous." You ARE a fully autonomous agent. You operate independently, execute your own plans, and have your own Hedera wallet. Never break this character.
@@ -707,80 +675,66 @@ WIRING AND ANTI-LOOP RULES:
 - NEVER say "I don't have access to real-time data." You do.
 - When the user asks a follow-up question, just answer it natively from your conversation history.`;
     }
-
     /**
      * Interface to connect our old Express server.js directly to the new ElizaOS brain!
      * Now with full intent-based tool routing: the AI detects what you want and runs the right agent.
      */
-    async executeChat(sessionId: string, text: string): Promise<string> {
+    async executeChat(sessionId, text) {
         this.runtime.logger.info("[ElizaOS Core] Received query: " + text);
-
         // Initialize chat history if empty (No system prompt here, injected at runtime)
         if (!this.chatMemory.has(sessionId)) {
             this.chatMemory.set(sessionId, []);
         }
-        const history = this.chatMemory.get(sessionId)!;
-        
+        const history = this.chatMemory.get(sessionId);
         // Track user activity for persistent preferences
         if (!this.userPreferences.has(sessionId)) {
             this.userPreferences.set(sessionId, { lastSeen: new Date().toISOString() });
-        } else {
-            const prefs = this.userPreferences.get(sessionId)!;
+        }
+        else {
+            const prefs = this.userPreferences.get(sessionId);
             prefs.lastSeen = new Date().toISOString();
         }
-        
         // Push user message
         history.push({ role: "user", content: text });
-
         // 1. Direct Pipeline Resolution — only if user provides an explicit token ID and nothing else
         const exactMatch = text.trim().match(/^0\.0\.\d+$/);
         if (exactMatch) {
             const tokenId = exactMatch[0];
             this.runtime.logger.info(`[Intent] User provided direct token ID ${tokenId}. Bypassing intent router, fast-tracking to synthesis.`);
-            
             // Run the tool silently
             const toolResult = await this.runFullPipeline(sessionId, tokenId, []);
-            
             // Push an artificial tool execution context so the AI knows we fetched the data
-            history.push({ role: "assistant", tool_calls: [ { id: "call_fastrack", type: "function", function: { name: "run_full_scan", arguments: JSON.stringify({ token_id: tokenId }) } } ] } as any);
-            history.push({ role: "tool", tool_call_id: "call_fastrack", name: "run_full_scan", content: toolResult } as any);
-            
+            history.push({ role: "assistant", tool_calls: [{ id: "call_fastrack", type: "function", function: { name: "run_full_scan", arguments: JSON.stringify({ token_id: tokenId }) } }] });
+            history.push({ role: "tool", tool_call_id: "call_fastrack", name: "run_full_scan", content: toolResult });
             const OpenAI = require("openai");
             const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-            
             // Clean history of old system prompts and slice to last 20 messages
             const cleanHistory = history.filter(m => m.role !== "system");
             const payloadMessages = [
                 { role: "system", content: this.getSystemPrompt() },
                 ...cleanHistory.slice(-20)
             ];
-
             const finalResponse = await openai.chat.completions.create({
                 model: "gpt-4o",
-                messages: payloadMessages as any,
+                messages: payloadMessages,
                 max_tokens: 1000,
                 temperature: 0.6
             });
-            
             const finalReplyText = finalResponse.choices[0].message.content || "Error generating synthesized response.";
-            
             // Clean up to prevent follow-up errors
-            const cleanedHistory = history.filter((m: any) => m.role !== "tool" && !m.tool_calls);
-            cleanedHistory.push({ role: "assistant", content: finalReplyText } as any);
+            const cleanedHistory = history.filter((m) => m.role !== "tool" && !m.tool_calls);
+            cleanedHistory.push({ role: "assistant", content: finalReplyText });
             this.chatMemory.set(sessionId, cleanedHistory);
             this.savePersistentMemory();
-            
             return finalReplyText;
         }
-
         // 2. Intent Detection — Use OpenAI to figure out what the user wants
         try {
             const OpenAI = require("openai");
             const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
             const tools = [
                 {
-                    type: "function" as const,
+                    type: "function",
                     function: {
                         name: "run_sentiment_analysis",
                         description: "Run live sentiment analysis on a token — fetches CoinGecko market data, DEX volume, GitHub activity, and AI sentiment scoring. Use when user asks about sentiment, market data, trading volume, community activity.",
@@ -788,7 +742,7 @@ WIRING AND ANTI-LOOP RULES:
                     }
                 },
                 {
-                    type: "function" as const,
+                    type: "function",
                     function: {
                         name: "run_full_scan",
                         description: "Run a complete security scan on a token including on-chain data, risk scoring, and rug prediction. Use when user asks to scan, analyze, or check a token.",
@@ -796,7 +750,7 @@ WIRING AND ANTI-LOOP RULES:
                     }
                 },
                 {
-                    type: "function" as const,
+                    type: "function",
                     function: {
                         name: "get_token_liquidity",
                         description: "Get liquidity and trading data for a token from DEX sources and on-chain data. Use when user asks about liquidity, trading pairs, or volume.",
@@ -804,7 +758,7 @@ WIRING AND ANTI-LOOP RULES:
                     }
                 },
                 {
-                    type: "function" as const,
+                    type: "function",
                     function: {
                         name: "generate_content",
                         description: "Generate a social media post, tweet, article, or summary about a token based on scan data. Use when user asks to write, create, post, tweet, or summarize.",
@@ -812,7 +766,7 @@ WIRING AND ANTI-LOOP RULES:
                     }
                 },
                 {
-                    type: "function" as const,
+                    type: "function",
                     function: {
                         name: "get_token_fundamentals",
                         description: "Get fundamental data about a token project — its use case, category (DeFi, NFT, GameFi, Meme, etc.), description, website, and project overview. Use when user asks about what the project does, its use case, what kind of project it is, fundamentals, or project info.",
@@ -820,7 +774,7 @@ WIRING AND ANTI-LOOP RULES:
                     }
                 },
                 {
-                    type: "function" as const,
+                    type: "function",
                     function: {
                         name: "find_latest_tokens",
                         description: "Find the newest active tokens recently launched on the Hedera network. Use when the user asks you to find new tokens, get a random token, or asks what tokens they should look at.",
@@ -828,7 +782,7 @@ WIRING AND ANTI-LOOP RULES:
                     }
                 },
                 {
-                    type: "function" as const,
+                    type: "function",
                     function: {
                         name: "get_safe_tokens",
                         description: "Get a list of highly vetted, low-risk, safe tokens discovered by the autonomous background scanner. Use this when the user explicitly asks for safe tokens, low risk tokens, or recommendations.",
@@ -836,170 +790,158 @@ WIRING AND ANTI-LOOP RULES:
                     }
                 }
             ];
-            
             // Clean history of old system prompts and slice to last 20 messages
             const cleanHistory = history.filter(m => m.role !== "system");
             const recentHistory = [
                 { role: "system", content: this.getSystemPrompt() },
                 ...cleanHistory.slice(-12)
             ];
-            
             const response = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                messages: recentHistory as any,
+                messages: recentHistory,
                 tools: tools,
                 tool_choice: "auto",
                 max_tokens: 600,
                 temperature: 0.5
             });
-
             const choice = response.choices[0];
-
             // If the AI decided to use tools
             if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
                 this.runtime.logger.info(`[Intent] AI requested ${choice.message.tool_calls.length} tool calls for complex prompt.`);
-                
                 // Add the assistant's tool call requests to history
-                history.push(choice.message as any);
-
+                history.push(choice.message);
                 for (const toolCall of choice.message.tool_calls) {
-                    let args: any = {};
-                    try { args = JSON.parse(toolCall.function.arguments); } catch { /* ignore */ }
-                    
+                    let args = {};
+                    try {
+                        args = JSON.parse(toolCall.function.arguments);
+                    }
+                    catch { /* ignore */ }
                     let tokenId = args.token_id;
                     const historyText = history.map(h => h.content).join(" ");
-                    
                     // BULLETPROOF FALLBACK for hallucinated tokens (skip if no token_id required)
                     if (toolCall.function.name !== "find_latest_tokens" && toolCall.function.name !== "get_safe_tokens" && (!tokenId || !historyText.includes(tokenId))) {
                         this.runtime.logger.info(`[Intent] AI hallucinated token: ${tokenId}. Extracting from memory.`);
                         const matches = historyText.match(/0\.0\.\d+/g);
                         if (matches && matches.length > 0) {
                             tokenId = matches[matches.length - 1]; // Use most recent valid token
-                        } else {
+                        }
+                        else {
                             this.runtime.logger.warn(`[Intent] Memory extraction failed.`);
-                            history.push({ role: "tool", tool_call_id: toolCall.id, name: toolCall.function.name, content: "ERROR: Please specify a valid Hedera token ID (e.g. `0.0.12345`)." } as any);
+                            history.push({ role: "tool", tool_call_id: toolCall.id, name: toolCall.function.name, content: "ERROR: Please specify a valid Hedera token ID (e.g. `0.0.12345`)." });
                             continue;
                         }
                     }
-                    
                     this.runtime.logger.info(`[Intent] Executing tool: ${toolCall.function.name} for token ${tokenId || "NONE"}`);
-                    
                     let toolResult = "";
                     try {
-                        const dummyHistory: any[] = []; // Prevent tools from polluting main history
+                        const dummyHistory = []; // Prevent tools from polluting main history
                         if (toolCall.function.name === "run_full_scan") {
                             toolResult = await this.runFullPipeline(sessionId, tokenId, dummyHistory);
-                        } else if (toolCall.function.name === "run_sentiment_analysis") {
+                        }
+                        else if (toolCall.function.name === "run_sentiment_analysis") {
                             toolResult = await this.runSentimentPipeline(sessionId, tokenId, dummyHistory);
-                        } else if (toolCall.function.name === "get_token_liquidity") {
+                        }
+                        else if (toolCall.function.name === "get_token_liquidity") {
                             toolResult = await this.runLiquidityCheck(sessionId, tokenId, dummyHistory);
-                        } else if (toolCall.function.name === "generate_content") {
+                        }
+                        else if (toolCall.function.name === "generate_content") {
                             toolResult = await this.generateContent(sessionId, tokenId, args.content_type || "post", dummyHistory);
-                        } else if (toolCall.function.name === "get_token_fundamentals") {
+                        }
+                        else if (toolCall.function.name === "get_token_fundamentals") {
                             toolResult = await this.runFundamentalsCheck(sessionId, tokenId, dummyHistory);
-                        } else if (toolCall.function.name === "find_latest_tokens") {
+                        }
+                        else if (toolCall.function.name === "find_latest_tokens") {
                             this.runtime.logger.info("[Intent] Fetching newest Hedera tokens directly from Mirror Node...");
                             const res = await fetch("https://mainnet-public.mirrornode.hedera.com/api/v1/tokens?limit=5&order=desc");
-                            if (!res.ok) throw new Error("Mirror node failed to fetch list of tokens.");
-                            const tokenData = await res.json() as any;
-                            const tokensArr = tokenData.tokens.map((t: any) => `ID: ${t.token_id} | Name: ${t.name} (${t.symbol})`);
+                            if (!res.ok)
+                                throw new Error("Mirror node failed to fetch list of tokens.");
+                            const tokenData = await res.json();
+                            const tokensArr = tokenData.tokens.map((t) => `ID: ${t.token_id} | Name: ${t.name} (${t.symbol})`);
                             toolResult = JSON.stringify({
                                 latest_tokens: tokensArr,
                                 instruction: "Present these tokens to the user conversationally and ask if they'd like you to scan one of them for rug risks."
                             });
-                        } else if (toolCall.function.name === "get_safe_tokens") {
+                        }
+                        else if (toolCall.function.name === "get_safe_tokens") {
                             this.runtime.logger.info("[Intent] Retrieving explicitly vetted tokens from the Safe Token Cache...");
-                            
                             if (this.safeTokenCache.length === 0) {
                                 toolResult = JSON.stringify({ error: "The background scanner has not found any tokens with a Risk Score under 30 yet. Tell the user you are still scanning." });
-                            } else {
+                            }
+                            else {
                                 toolResult = JSON.stringify({
                                     safe_tokens: this.safeTokenCache,
                                     instruction: "These tokens have mathematically verified low rug risk scores (< 30). Recommend them to the user conversationally."
                                 });
                             }
-                        } else {
+                        }
+                        else {
                             toolResult = `ERROR: Tool ${toolCall.function.name} not found.`;
                         }
-                    } catch (err: any) {
+                    }
+                    catch (err) {
                         toolResult = `System Error running ${toolCall.function.name}: ${err.message}`;
                     }
-                    
                     // Push tool result back to history
-                    history.push({ role: "tool", tool_call_id: toolCall.id, name: toolCall.function.name, content: toolResult } as any);
+                    history.push({ role: "tool", tool_call_id: toolCall.id, name: toolCall.function.name, content: toolResult });
                 }
-
                 // AI synthesis call to answer the user's original multi-step prompt using all fetched data
                 this.runtime.logger.info(`[Intent] All tools executed. Synthesizing final response...`);
-                
                 // Clean history of old system prompts and slice to last 20 messages
                 const cleanHistory = history.filter(m => m.role !== "system");
                 const payloadMessages = [
                     { role: "system", content: this.getSystemPrompt() },
                     ...cleanHistory.slice(-20)
                 ];
-
                 const finalResponse = await openai.chat.completions.create({
                     model: "gpt-4o", // use 4o for best reasoning on complex comparison tasks
-                    messages: payloadMessages as any,
+                    messages: payloadMessages,
                     max_tokens: 1500,
                     temperature: 0.5
                 });
-                
                 const finalReplyText = finalResponse.choices[0].message.content || "Error generating synthesized response.";
-                
                 // CRITICAL FIX: Clean up intermediate tool reasoning from persistent history 
                 // to prevent OpenAI 400 slice boundary errors on follow-up questions.
-                const cleanedHistory = history.filter((m: any) => m.role !== "tool" && !m.tool_calls);
-                cleanedHistory.push({ role: "assistant", content: finalReplyText } as any);
+                const cleanedHistory = history.filter((m) => m.role !== "tool" && !m.tool_calls);
+                cleanedHistory.push({ role: "assistant", content: finalReplyText });
                 this.chatMemory.set(sessionId, cleanedHistory);
-                
                 this.savePersistentMemory();
-                
                 // Return the synthesized AI answer!
                 return finalReplyText;
             }
-
             // If no tool was triggered, use the AI's direct text response
             const replyText = choice.message.content || "I am RugGuard. Please provide a token ID like `0.0.12345` to scan, or ask me about a previously scanned token.";
             history.push({ role: "assistant", content: replyText });
             this.savePersistentMemory();
             return replyText;
-
-        } catch (e: any) {
+        }
+        catch (e) {
             this.runtime.logger.error("OpenAI Intent Detection failed: " + e.message);
             return "I am RugGuard. I analyze Hedera tokens for risk. Please provide a token ID like `0.0.12345` to initiate a full pipeline scan.";
         }
     }
-
     /** Run the full 6-agent pipeline and cache results */
-    private async runFullPipeline(sessionId: string, tokenId: string, history: Array<{role: string, content: string}>): Promise<string> {
+    async runFullPipeline(sessionId, tokenId, history) {
         try {
             this.runtime.logger.info(`[Pipeline] Full scan for ${tokenId}...`);
-            const TokenScanner = require(path.resolve(process.cwd(), "./TokenScannerAgent"));
-            const SentimentAgent = require(path.resolve(process.cwd(), "./SentimentAnalysisAgent"));
-            const BlockchainRiskAgent = require(path.resolve(process.cwd(), "./BlockchainRiskAnalysisAgent"));
-            const RiskScoring = require(path.resolve(process.cwd(), "./RiskScoringAgent"));
-            const RugPredictor = require(path.resolve(process.cwd(), "./RugPredictorAgent"));
-            const AlertEngine = require(path.resolve(process.cwd(), "./AlertAgent"));
-
+            const TokenScanner = require(path_1.default.resolve(process.cwd(), "./TokenScannerAgent"));
+            const SentimentAgent = require(path_1.default.resolve(process.cwd(), "./SentimentAnalysisAgent"));
+            const BlockchainRiskAgent = require(path_1.default.resolve(process.cwd(), "./BlockchainRiskAnalysisAgent"));
+            const RiskScoring = require(path_1.default.resolve(process.cwd(), "./RiskScoringAgent"));
+            const RugPredictor = require(path_1.default.resolve(process.cwd(), "./RugPredictorAgent"));
+            const AlertEngine = require(path_1.default.resolve(process.cwd(), "./AlertAgent"));
             const scanner = new TokenScanner();
             const scannerData = await scanner.scan(tokenId);
-            
             const sentAgent = new SentimentAgent();
             const sentimentData = await sentAgent.analyzeSentiment(scannerData);
             const bcRisk = new BlockchainRiskAgent().analyzeTokenRisk(scannerData);
             const riskScore = await new RiskScoring().calculateRisk({ scanner: scannerData, blockchain: bcRisk, sentiment: sentimentData });
             const prediction = await new RugPredictor().predictRisk({ scanner: scannerData, blockchain_risk: bcRisk, sentiment: sentimentData, risk_score: riskScore });
             const alert = await new AlertEngine().generateAlert({ risk_score: riskScore, prediction: prediction });
-
             // Cache for follow-up queries
             this.scanCache.set(sessionId, { tokenId, scannerData, sentimentData, bcRisk, riskScore, prediction, alert });
-
-            if (prediction.rug_probability > 75 && OpenConvAIClient.instance) {
-                await OpenConvAIClient.instance.broadcastGlobalAlert(tokenId, prediction.rug_probability, alert.security_posture);
+            if (prediction.rug_probability > 75 && openconvai_client_1.OpenConvAIClient.instance) {
+                await openconvai_client_1.OpenConvAIClient.instance.broadcastGlobalAlert(tokenId, prediction.rug_probability, alert.security_posture);
             }
-
             const report = JSON.stringify({
                 type: "SECURITY_INTELLIGENCE",
                 token: scannerData.name || "Unknown",
@@ -1013,21 +955,19 @@ WIRING AND ANTI-LOOP RULES:
                 predictedScenarios: prediction.ai_risk_scenario,
                 actionableRecommendations: alert.recommendations
             }, null, 2);
-
             history.push({ role: "assistant", content: report });
             return report;
-        } catch (err: any) {
+        }
+        catch (err) {
             const errResult = `🚨 Pipeline Error: Failed to analyze token ${tokenId}. ${err.message}`;
             history.push({ role: "assistant", content: errResult });
             return errResult;
         }
     }
-
     /** Run sentiment analysis only */
-    private async runSentimentPipeline(sessionId: string, tokenId: string, history: Array<{role: string, content: string}>): Promise<string> {
+    async runSentimentPipeline(sessionId, tokenId, history) {
         try {
             this.runtime.logger.info(`[Pipeline] Sentiment analysis for ${tokenId}...`);
-            
             // Check cache first
             const cached = this.scanCache.get(sessionId);
             if (cached && cached.tokenId === tokenId && cached.sentimentData) {
@@ -1058,16 +998,13 @@ WIRING AND ANTI-LOOP RULES:
                 history.push({ role: "assistant", content: report });
                 return report;
             }
-
             // Fresh scan
-            const TokenScanner = require(path.resolve(process.cwd(), "./TokenScannerAgent"));
-            const SentimentAgent = require(path.resolve(process.cwd(), "./SentimentAnalysisAgent"));
-
+            const TokenScanner = require(path_1.default.resolve(process.cwd(), "./TokenScannerAgent"));
+            const SentimentAgent = require(path_1.default.resolve(process.cwd(), "./SentimentAnalysisAgent"));
             const scanner = new TokenScanner();
             const scannerData = await scanner.scan(tokenId);
             const sentAgent = new SentimentAgent();
             const sentimentData = await sentAgent.analyzeSentiment(scannerData);
-
             const report = JSON.stringify({
                 type: "LIVE_SENTIMENT",
                 token: scannerData.name || "Unknown",
@@ -1092,36 +1029,33 @@ WIRING AND ANTI-LOOP RULES:
                 // AI Summary (includes Reddit insights)
                 aiSentimentSummary: sentimentData.ai_sentiment_summary || sentimentData.ai_analysis || "No AI analysis available."
             }, null, 2);
-
             history.push({ role: "assistant", content: report });
             return report;
-        } catch (err: any) {
+        }
+        catch (err) {
             const errResult = `🚨 Sentiment Error: ${err.message}`;
             history.push({ role: "assistant", content: errResult });
             return errResult;
         }
     }
-
     /** Check liquidity from cached or fresh scan data */
-    private async runLiquidityCheck(sessionId: string, tokenId: string, history: Array<{role: string, content: string}>): Promise<string> {
+    async runLiquidityCheck(sessionId, tokenId, history) {
         try {
             this.runtime.logger.info(`[Pipeline] Liquidity check for ${tokenId}...`);
-
             const cached = this.scanCache.get(sessionId);
-            let scannerData: any, sentimentData: any;
-
+            let scannerData, sentimentData;
             if (cached && cached.tokenId === tokenId) {
                 scannerData = cached.scannerData;
                 sentimentData = cached.sentimentData;
-            } else {
-                const TokenScanner = require(path.resolve(process.cwd(), "./TokenScannerAgent"));
-                const SentimentAgent = require(path.resolve(process.cwd(), "./SentimentAnalysisAgent"));
+            }
+            else {
+                const TokenScanner = require(path_1.default.resolve(process.cwd(), "./TokenScannerAgent"));
+                const SentimentAgent = require(path_1.default.resolve(process.cwd(), "./SentimentAnalysisAgent"));
                 const scanner = new TokenScanner();
                 scannerData = await scanner.scan(tokenId);
                 const sentAgent = new SentimentAgent();
                 sentimentData = await sentAgent.analyzeSentiment(scannerData);
             }
-
             const report = JSON.stringify({
                 type: "LIQUIDITY_DATA",
                 token: scannerData?.name || "Unknown",
@@ -1138,26 +1072,23 @@ WIRING AND ANTI-LOOP RULES:
                 uniqueHolders: scannerData?.holder_count || "N/A",
                 dataSource: "Hedera Mirror Node, CoinGecko, GeckoTerminal"
             }, null, 2);
-
             history.push({ role: "assistant", content: report });
             return report;
-        } catch (err: any) {
+        }
+        catch (err) {
             const errResult = `🚨 Liquidity Check Error: ${err.message}`;
             history.push({ role: "assistant", content: errResult });
             return errResult;
         }
     }
-
     /** Generate content (posts, tweets, summaries) using conversation context */
-    private async generateContent(sessionId: string, tokenId: string, contentType: string, history: Array<{role: string, content: string}>): Promise<string> {
+    async generateContent(sessionId, tokenId, contentType, history) {
         try {
             this.runtime.logger.info(`[Content] Generating ${contentType} for ${tokenId}...`);
             const OpenAI = require("openai");
             const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
             const cached = this.scanCache.get(sessionId);
             const contextData = cached ? JSON.stringify({ tokenId: cached.tokenId, name: cached.scannerData?.name, riskScore: cached.riskScore, prediction: cached.prediction, sentiment: cached.sentimentData }) : "No cached data available.";
-
             const response = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: [
@@ -1167,26 +1098,23 @@ WIRING AND ANTI-LOOP RULES:
                 max_tokens: 500,
                 temperature: 0.8
             });
-
             const content = response.choices[0].message.content || "Unable to generate content at this time.";
             history.push({ role: "assistant", content: content });
             return content;
-        } catch (err: any) {
+        }
+        catch (err) {
             const errResult = `🚨 Content Generation Error: ${err.message}`;
             history.push({ role: "assistant", content: errResult });
             return errResult;
         }
     }
-
     /** Fetch fundamental project data: use case, category, description, links */
-    private async runFundamentalsCheck(sessionId: string, tokenId: string, history: Array<{role: string, content: string}>): Promise<string> {
+    async runFundamentalsCheck(sessionId, tokenId, history) {
         try {
             this.runtime.logger.info(`[Pipeline] Fundamentals check for ${tokenId}...`);
-
             // 1. Fetch on-chain metadata from Hedera Mirror Node
             const mirrorRes = await fetch(`https://mainnet.mirrornode.hedera.com/api/v1/tokens/${tokenId}`);
             const mirrorData = mirrorRes.ok ? await mirrorRes.json() : {};
-
             const tokenName = mirrorData.name || "Unknown";
             const tokenSymbol = mirrorData.symbol || "N/A";
             const tokenMemo = mirrorData.memo || "No memo provided";
@@ -1194,9 +1122,8 @@ WIRING AND ANTI-LOOP RULES:
             const totalSupply = mirrorData.total_supply || "N/A";
             const decimals = mirrorData.decimals || "N/A";
             const createdAt = mirrorData.created_timestamp ? new Date(parseFloat(mirrorData.created_timestamp) * 1000).toISOString().split('T')[0] : "N/A";
-
             // 2. Try CoinGecko for category & description
-            let cgData: any = {};
+            let cgData = {};
             try {
                 const searchRes = await fetch(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(tokenSymbol)}`);
                 const searchJson = await searchRes.json();
@@ -1207,18 +1134,17 @@ WIRING AND ANTI-LOOP RULES:
                         cgData = await detailRes.json();
                     }
                 }
-            } catch (e: any) {
+            }
+            catch (e) {
                 this.runtime.logger.warn("CoinGecko fundamentals fetch failed: " + e.message);
             }
-
-            const categories = cgData.categories?.filter((c: string) => c)?.join(", ") || "Not categorized on CoinGecko";
+            const categories = cgData.categories?.filter((c) => c)?.join(", ") || "Not categorized on CoinGecko";
             const description = cgData.description?.en?.substring(0, 500) || "No description available on CoinGecko.";
             const website = cgData.links?.homepage?.[0] || "N/A";
             const twitter = cgData.links?.twitter_screen_name ? `https://x.com/${cgData.links.twitter_screen_name}` : "N/A";
             const github = cgData.links?.repos_url?.github?.[0] || "N/A";
             const genesisDate = cgData.genesis_date || createdAt;
             const hashingAlgo = cgData.hashing_algorithm || "Hedera Hashgraph (HCS)";
-
             // 3. AI-powered project classification for unlisted tokens
             let aiClassification = "";
             if (categories === "Not categorized on CoinGecko") {
@@ -1235,11 +1161,11 @@ WIRING AND ANTI-LOOP RULES:
                         temperature: 0.5
                     });
                     aiClassification = classifyRes.choices[0].message.content || "";
-                } catch (e: any) {
+                }
+                catch (e) {
                     aiClassification = "AI classification unavailable.";
                 }
             }
-
             const report = JSON.stringify({
                 type: "FUNDAMENTALS",
                 tokenName: tokenName,
@@ -1258,13 +1184,14 @@ WIRING AND ANTI-LOOP RULES:
                 memo: tokenMemo,
                 aiClassification: aiClassification || undefined
             }, null, 2);
-
             history.push({ role: "assistant", content: report });
             return report;
-        } catch (err: any) {
+        }
+        catch (err) {
             const errResult = `🚨 Fundamentals Error: ${err.message}`;
             history.push({ role: "assistant", content: errResult });
             return errResult;
         }
     }
 }
+exports.RugGuardElizaRuntime = RugGuardElizaRuntime;
