@@ -2,7 +2,7 @@
 
 > **Multi-agent AI pipeline that autonomously protects Hedera users from rug pulls, scam tokens, and market manipulation — powered by ElizaOS, OpenConvAI (HCS-10), and GPT-4o.**
 
-[![Hedera](https://img.shields.io/badge/Hedera-Mainnet-blueviolet)](https://hedera.com)
+[![Hedera](https://img.shields.io/badge/Hedera-Testnet-blueviolet)](https://hedera.com)
 [![ElizaOS](https://img.shields.io/badge/ElizaOS-Agentic_Runtime-green)](https://elizaos.ai)
 [![OpenConvAI](https://img.shields.io/badge/OpenConvAI-HCS--10-orange)](https://openconvai.com)
 [![Railway](https://img.shields.io/badge/Deployed-Railway-purple)](https://railway.com)
@@ -29,10 +29,11 @@ All on-chain entities referenced by RugGuard on the Hedera network:
 
 | Entity | ID | Hashscan Link | Purpose |
 |--------|----|---------------|---------|
-| **RugGuard Operator Account** | `0.0.8072136` | [View on Hashscan](https://hashscan.io/mainnet/account/0.0.8072136) | Agent's Hedera operator account for signing transactions and HCS messages |
-| **KARATE Token (Example Scan)** | `0.0.2283230` | [View on Hashscan](https://hashscan.io/mainnet/token/0.0.2283230) | Primary test token used for pipeline validation (Karate Combat) |
+| **RugGuard Operator Account** | `0.0.8072136` | [View on Hashscan](https://hashscan.io/testnet/account/0.0.8072136) | Agent's Hedera testnet account for OpenConvAI registration and HCS messaging |
+| **KARATE Token (Example Scan)** | `0.0.2283230` | [View on Hashscan](https://hashscan.io/mainnet/token/0.0.2283230) | Primary test token used for pipeline validation (Karate Combat) — scanned via mainnet |
 | **HBAR (Reference Token)** | `0.0.1456986` | [View on Hashscan](https://hashscan.io/mainnet/token/0.0.1456986) | Wrapped HBAR reference used in DEX liquidity analysis |
-| **Hedera Mirror Node API** | — | [mirror-node-api](https://mainnet-public.mirrornode.hedera.com) | Source of truth for all on-chain token metadata, holder distribution, and transaction data |
+| **Hedera Mirror Node (Mainnet)** | — | [mirror-node-api](https://mainnet-public.mirrornode.hedera.com) | Source of truth for token metadata, holder distribution, and transaction data |
+| **Hedera Mirror Node (Testnet)** | — | [mirror-node-api](https://testnet.mirrornode.hedera.com) | Used for OpenConvAI (HCS-10) agent registration and inter-agent messaging |
 
 > **Note:** RugGuard autonomously scans newly created HTS tokens via the Hedera Mirror Node API. Token IDs are dynamic — the agent discovers new tokens each planning cycle.
 
