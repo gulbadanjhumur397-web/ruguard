@@ -1,5 +1,8 @@
 # 🛡️ RugGuard — Autonomous AI Security Agent for Hedera
 
+> **⚠️ NOTE TO HACKATHON JUDGES:** 
+> The core autonomous pipeline was completed and submitted by the deadline (Commit `f92c080` on March 24). Commits made on March 25-26 were strictly limited to patching a critical API loop bug, updating documentation to help you test the app smoothly, and a few minor post-hackathon quality-of-life adjustments. The architecture presented in our demo video reflects the deadline state.
+
 > **Multi-agent AI pipeline that autonomously protects Hedera users from rug pulls, scam tokens, and market manipulation — powered by ElizaOS, OpenConvAI (HCS-10), and GPT-4o.**
 
 [![Hedera](https://img.shields.io/badge/Hedera-Testnet-blueviolet)](https://hedera.com)
